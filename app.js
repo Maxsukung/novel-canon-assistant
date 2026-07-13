@@ -179,7 +179,11 @@ async function extractFile(file){const ext=file.name.split('.').pop().toLowerCas
 
 
 
-// ---- Smart import and chapter splitting (v18) ----
+// ---- Smart import and chapter splitting (v21) ----
+function thaiDigitsToArabic(value){
+  const map={'๐':'0','๑':'1','๒':'2','๓':'3','๔':'4','๕':'5','๖':'6','๗':'7','๘':'8','๙':'9'};
+  return String(value??'').replace(/[๐-๙]/g,ch=>map[ch]||ch);
+}
 function normalizeHeadingLine(value){
   return repairThaiText(String(value||'')).replace(/[\u200b\u2060]/g,'').replace(/[ \t]+/g,' ').trim();
 }
@@ -653,13 +657,15 @@ $('documentInput').onchange=async e=>{
       }
       const detectedType=detectDocumentType(f.name,parsed.text||''),sourceKey=normalizedSourceKey(f.name);
       const existed=(p.documents||[]).some(d=>d.sourceKey===sourceKey&&!d.derivedChapter);
-      if(existed){removeSourceAndDerived(p,sourceKey);updatedFiles++}
       const sourceDoc={id:uid(),name:f.name,sourceFileName:f.name,sourceKey,type:detectedType,isSourceDocument:true,derivedChapter:false,
         text:parsed.text||'',blocks:parsed.blocks||null,pages:parsed.pages||null,pageCount:parsed.pageCount||null,pdfBase64:parsed.pdfBase64||null,
         pdfQuality:parsed.pdfQuality||null,extractionVersion:parsed.extractionVersion||null,warnings:parsed.warnings||[],size:f.size,
         createdAt:now(),updatedAt:now()};
-      p.documents.push(sourceDoc);
+      // Build all derived data before touching the database. If parsing fails, nothing is saved.
       const chapterDocs=buildChapterDocuments(f,parsed,detectedType,sourceDoc);
+      if(detectedType==='chapter'&&!chapterDocs.length)throw new Error('พบว่าเป็นต้นฉบับ แต่ไม่พบหัวข้อรูปแบบ “บทที่/ตอนที่ เลข : ชื่อ” จึงยังไม่บันทึกไฟล์');
+      if(existed){removeSourceAndDerived(p,sourceKey);updatedFiles++}
+      p.documents.push(sourceDoc);
       if(chapterDocs.length){p.documents.push(...chapterDocs);createdChapters+=chapterDocs.length}
       if(['character','canon'].includes(detectedType)){
         const extracted=extractCharactersFromDocument(p,sourceDoc);
