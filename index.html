@@ -24,6 +24,7 @@
     <nav id="nav">
       <button data-view="dashboard" class="active">▦ <span>ภาพรวม</span></button>
       <button data-view="documents">▤ <span>เอกสาร</span></button>
+      <button data-view="novelContent">▥ <span>เนื้อหานิยาย</span></button>
       <button data-view="canon">◆ <span>Canon</span></button>
       <button data-view="characters">● <span>ตัวละคร</span></button>
       <button data-view="timeline">◷ <span>Timeline</span></button>
@@ -56,6 +57,20 @@
       <div class="section-head"><div><h2>คลังเอกสาร</h2><p>รองรับ PDF แบบข้อความ, DOCX, TXT, MD และ JSON</p></div><label class="primary file-label">＋ นำเข้าไฟล์<input id="documentInput" type="file" multiple accept=".pdf,.docx,.txt,.md,.json"></label></div>
       <div class="toolbar card"><select id="documentType"><option value="canon">Canon Database</option><option value="timeline">Timeline</option><option value="character">Character Bible</option><option value="chapter">ต้นฉบับตอน</option><option value="reference">เอกสารอ้างอิง</option></select><input id="documentSearch" placeholder="ค้นชื่อหรือข้อความในเอกสาร"><span id="importStatus"></span></div>
       <div id="documentList" class="cards"></div>
+    </section>
+
+    <section id="novelContent" class="view">
+      <div class="section-head"><div><h2>เนื้อหานิยาย</h2><p>รวมต้นฉบับที่นำเข้า แยกเป็นบทและตอนสำหรับอ่านเท่านั้น</p></div></div>
+      <div class="toolbar card novel-toolbar"><input id="novelSearch" placeholder="ค้นชื่อบท ตอน หรือข้อความในต้นฉบับ"><span id="novelCount"></span></div>
+      <div id="novelChapterList" class="novel-chapter-list"></div>
+    </section>
+
+    <section id="novelReader" class="view">
+      <div class="novel-reader-top"><button id="backToNovelContent" class="back-button">← กลับไปหน้าเนื้อหานิยาย</button><span class="readonly-badge">อ่านอย่างเดียว</span></div>
+      <article class="novel-reader-card">
+        <header class="novel-reader-head"><span id="novelReaderType" class="badge">ต้นฉบับตอน</span><h2 id="novelReaderTitle"></h2><p id="novelReaderMeta" class="meta"></p></header>
+        <div id="novelReaderBody" class="novel-reader-body"></div>
+      </article>
     </section>
 
     <section id="canon" class="view">
