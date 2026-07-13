@@ -2,3 +2,25 @@
 
 .sidebar-overlay{display:none}
 @media(max-width:900px){.sidebar{left:-290px!important;z-index:1000!important}.sidebar.open{left:0!important}.sidebar-overlay{display:block;position:fixed;inset:0;background:rgba(15,23,42,.45);opacity:0;pointer-events:none;transition:opacity .2s;z-index:999}.sidebar-overlay.show{opacity:1;pointer-events:auto}.icon-btn{position:relative;z-index:20;touch-action:manipulation}}
+
+/* v7 — iPad safe-area and cleaner mobile header */
+html{background:#fff;scroll-padding-top:90px}
+body{min-height:100dvh;padding-top:env(safe-area-inset-top);overscroll-behavior-y:none}
+#appShell{min-height:calc(100dvh - env(safe-area-inset-top))}
+.topbar{height:auto;min-height:78px;padding-top:4px;padding-bottom:4px;top:0}
+.section-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.inline-notice{margin:-4px 0 18px;padding:12px 14px;border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:13px;font-size:13px;line-height:1.55}
+.item-card .source-line{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.item-card .auto-badge{background:#ecfeff;color:#0e7490;margin-left:6px}
+@media(display-mode:standalone){
+  body{padding-top:max(env(safe-area-inset-top),12px)}
+  .topbar{background:#fff}
+}
+@media(max-width:900px){
+  .topbar{min-height:76px;padding-left:18px;padding-right:18px}
+  .topbar h1{font-size:21px;line-height:1.15}
+  .topbar p{line-height:1.25}
+  .sidebar{padding-top:calc(18px + env(safe-area-inset-top))}
+  .view{padding-top:20px}
+}
+@media(max-width:560px){.section-actions{width:100%}.section-actions button{flex:1}}

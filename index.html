@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Novel Studio">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -65,7 +65,8 @@
     </section>
 
     <section id="characters" class="view">
-      <div class="section-head"><div><h2>ตัวละคร</h2><p>ประวัติ สถานะ ความรู้ และข้อจำกัด</p></div><button id="openCharacterModal" class="primary">＋ เพิ่มตัวละคร</button></div>
+      <div class="section-head"><div><h2>ตัวละคร</h2><p>ประวัติ สถานะ ความรู้ และข้อจำกัด</p></div><div class="section-actions"><button id="extractCharactersBtn">สกัดจากเอกสาร</button><button id="openCharacterModal" class="primary">＋ เพิ่มตัวละคร</button></div></div>
+      <div id="characterExtractStatus" class="inline-notice" hidden></div>
       <div id="characterList" class="cards"></div>
     </section>
 
@@ -131,6 +132,6 @@
 })();
 </script>
 <script src="mammoth.browser.min.js"></script>
-<script type="module" src="app.js?v=6"></script>
+<script type="module" src="app.js?v=7"></script>
 </body>
 </html>
