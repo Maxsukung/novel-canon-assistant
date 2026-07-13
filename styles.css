@@ -138,3 +138,17 @@ html,body{max-width:100%;overflow-x:hidden}
 .scene-divider{text-align:center;letter-spacing:.65em;color:#7c88a1;margin:2.6em 0}
 .novel-chapter-main h3{overflow-wrap:anywhere}
 @media(max-width:700px){.novel-reading-sheet{border-radius:0;border-left:0;border-right:0;padding:24px 20px}.novel-reading-prose{font-size:19px}.novel-reading-prose p{text-indent:1.6em}}
+
+/* Fix 15 — Thai-safe PDF extraction and a Dek-D-like reading rhythm */
+.novel-reader-body{max-width:none;padding:0;background:#fff8d8}
+.novel-reading-sheet{max-width:900px;margin:0 auto;background:#fff8d8;border:0;border-radius:0;padding:48px clamp(44px,8vw,96px) 96px;box-shadow:none}
+.novel-reading-prose{font-size:clamp(18px,2.05vw,22px);line-height:2.05;color:#8a4b22;overflow-wrap:normal;word-break:normal;font-weight:400}
+.novel-reading-prose p{margin:0 0 2.15em;text-indent:0;white-space:normal}
+.novel-reading-prose h2{font-size:1.18em;text-align:left;margin:0 0 2.4em;color:#8a4b22;font-weight:700}
+.novel-reading-prose h3{font-size:1em;text-align:left;margin:2.4em 0 1.5em;color:#8a4b22;font-weight:700}
+.scene-divider{margin:2.8em 0;text-align:center;color:#b77947;letter-spacing:.7em}
+@media(max-width:700px){
+  .novel-reading-sheet{padding:34px 28px 72px}
+  .novel-reading-prose{font-size:18px;line-height:2}
+  .novel-reading-prose p{margin-bottom:1.9em}
+}
