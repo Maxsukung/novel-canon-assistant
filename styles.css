@@ -181,3 +181,15 @@ html,body{max-width:100%;overflow-x:hidden}
   .pdf-native-toolbar{align-items:flex-start;font-size:13px;padding:10px 12px}
   .pdf-native-frame{height:calc(100vh - 118px);min-height:680px}
 }
+
+/* v18 read-only reader and import refinements */
+#novelReaderBody .no-copy,
+#novelReaderBody .novel-reading-prose{
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+}
+.novel-reading-prose{background:#fff;color:#111;line-height:2.05;font-size:1.15rem;letter-spacing:0;margin:0 auto;max-width:760px;padding:44px 52px;}
+.novel-reading-prose p{margin:0 0 1.55em;text-indent:0;white-space:pre-wrap;overflow-wrap:anywhere;}
+.novel-reading-sheet{background:#f5f7fb;padding:28px 16px;}
+@media(max-width:700px){.novel-reading-prose{padding:30px 24px;font-size:1.05rem;line-height:1.95}}
