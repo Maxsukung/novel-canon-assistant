@@ -1,5 +1,11 @@
-import * as pdfjsLib from './pdf.min.mjs';
-pdfjsLib.GlobalWorkerOptions.workerSrc='./pdf.worker.min.mjs';
+let pdfjsLib=null;
+async function getPdfJs(){
+  if(!pdfjsLib){
+    pdfjsLib=await import('./pdf.min.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc='./pdf.worker.min.mjs';
+  }
+  return pdfjsLib;
+}
 
 const DB='NovelStudioDB', VER=1, STORE='state', KEY='app';
 let state={version:1,projects:[],activeProjectId:null};
@@ -27,7 +33,7 @@ document.querySelectorAll('[data-close]').forEach(x=>x.onclick=closeModal);
 function ensureProject(){if(project())return true;toast('กรุณาสร้างโปรเจกต์ก่อน');return false}
 function createProjectModal(){openModal('สร้างโปรเจกต์',`<div class="form-grid"><input id="mProjectName" placeholder="ชื่อเรื่อง"><textarea id="mProjectDesc" placeholder="คำอธิบายสั้น ๆ"></textarea><button id="mCreateProject" class="primary large">สร้างโปรเจกต์</button></div>`,()=>{$('mCreateProject').onclick=async()=>{const name=$('mProjectName').value.trim();if(!name)return toast('กรุณาใส่ชื่อโปรเจกต์');const p=normalizeProject({name,description:$('mProjectDesc').value.trim()});state.projects.push(p);state.activeProjectId=p.id;activity('project',`สร้างโปรเจกต์ ${name}`);closeModal();await save();toast('สร้างโปรเจกต์แล้ว')}})}
 
-async function extractPdf(file){const data=new Uint8Array(await file.arrayBuffer());const pdf=await pdfjsLib.getDocument({data}).promise;const pages=[];for(let n=1;n<=pdf.numPages;n++){$('importStatus').textContent=`กำลังอ่าน ${file.name} หน้า ${n}/${pdf.numPages}`;const page=await pdf.getPage(n);const c=await page.getTextContent();const text=c.items.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim();pages.push({page:n,text})}return {text:pages.map(x=>`[หน้า ${x.page}]\n${x.text}`).join('\n\n'),pages,pageCount:pdf.numPages}}
+async function extractPdf(file){const pdfjs=await getPdfJs();const data=new Uint8Array(await file.arrayBuffer());const pdf=await pdfjs.getDocument({data}).promise;const pages=[];for(let n=1;n<=pdf.numPages;n++){$('importStatus').textContent=`กำลังอ่าน ${file.name} หน้า ${n}/${pdf.numPages}`;const page=await pdf.getPage(n);const c=await page.getTextContent();const text=c.items.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim();pages.push({page:n,text})}return {text:pages.map(x=>`[หน้า ${x.page}]\n${x.text}`).join('\n\n'),pages,pageCount:pdf.numPages}}
 async function extractDocx(file){const r=await window.mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});return {text:r.value.trim(),warnings:r.messages.map(x=>x.message)}}
 async function extractFile(file){const ext=file.name.split('.').pop().toLowerCase();if(['txt','md'].includes(ext))return {text:await file.text()};if(ext==='json'){const raw=await file.text();try{return {text:JSON.stringify(JSON.parse(raw),null,2)}}catch{return {text:raw}}}if(ext==='docx')return extractDocx(file);if(ext==='pdf')return extractPdf(file);throw new Error(`ยังไม่รองรับ .${ext}`)}
 
