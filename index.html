@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Novel Studio">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="styles.css">
+<title>Novel Studio</title>
+</head>
+<body>
+<div id="appShell">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">NS</div><div><strong>Novel Studio</strong><small>ผู้ช่วยเขียนนิยายออฟไลน์</small></div></div>
+    <div class="project-switcher">
+      <label>โปรเจกต์ปัจจุบัน</label>
+      <select id="activeProjectSelect"></select>
+      <button id="newProjectBtn" class="ghost">＋ สร้างโปรเจกต์</button>
+    </div>
+    <nav id="nav">
+      <button data-view="dashboard" class="active">▦ <span>ภาพรวม</span></button>
+      <button data-view="documents">▤ <span>เอกสาร</span></button>
+      <button data-view="canon">◆ <span>Canon</span></button>
+      <button data-view="characters">● <span>ตัวละคร</span></button>
+      <button data-view="timeline">◷ <span>Timeline</span></button>
+      <button data-view="editor">✎ <span>เขียนบท</span></button>
+      <button data-view="checker">✓ <span>ตรวจความขัดแย้ง</span></button>
+      <button data-view="dna">≋ <span>Writing DNA</span></button>
+      <button data-view="settings">⚙ <span>สำรองข้อมูล</span></button>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button id="menuBtn" class="icon-btn">☰</button>
+      <div><h1 id="pageTitle">ภาพรวม</h1><p id="pageSubtitle">จัดการนิยายและตรวจความต่อเนื่อง</p></div>
+      <div class="top-actions"><span id="saveState">บันทึกแล้ว</span><button id="installBtn" class="primary" hidden>ติดตั้ง</button></div>
+    </header>
+
+    <section id="dashboard" class="view active">
+      <div class="hero card"><div><p class="eyebrow">NOVEL WORKSPACE</p><h2 id="heroProject">ยังไม่มีโปรเจกต์</h2><p>นำเข้าไฟล์ สร้าง Canon เขียนบท และตรวจความต่อเนื่องในที่เดียว</p></div><button data-go="editor" class="primary large">เริ่มเขียนบท</button></div>
+      <div class="stats" id="stats"></div>
+      <div class="grid two">
+        <div class="card"><div class="section-head"><h3>งานล่าสุด</h3></div><div id="recentActivity" class="list compact"></div></div>
+        <div class="card"><div class="section-head"><h3>สถานะฐานข้อมูล</h3></div><div id="healthList" class="health-list"></div></div>
+      </div>
+    </section>
+
+    <section id="documents" class="view">
+      <div class="section-head"><div><h2>คลังเอกสาร</h2><p>รองรับ PDF แบบข้อความ, DOCX, TXT, MD และ JSON</p></div><label class="primary file-label">＋ นำเข้าไฟล์<input id="documentInput" type="file" multiple accept=".pdf,.docx,.txt,.md,.json"></label></div>
+      <div class="toolbar card"><select id="documentType"><option value="canon">Canon Database</option><option value="timeline">Timeline</option><option value="character">Character Bible</option><option value="chapter">ต้นฉบับตอน</option><option value="reference">เอกสารอ้างอิง</option></select><input id="documentSearch" placeholder="ค้นชื่อหรือข้อความในเอกสาร"><span id="importStatus"></span></div>
+      <div id="documentList" class="cards"></div>
+    </section>
+
+    <section id="canon" class="view">
+      <div class="section-head"><div><h2>Canon Database</h2><p>ข้อมูลที่ล็อกไว้และต้องไม่ขัดกัน</p></div><button id="openCanonModal" class="primary">＋ เพิ่ม Canon</button></div>
+      <div class="toolbar card"><select id="canonFilter"><option value="">ทุกหมวด</option><option>ตัวละคร</option><option>ระบบ</option><option>พลัง</option><option>ไทม์ไลน์</option><option>สถานที่</option><option>ไอเทม</option><option>กฎโลก</option><option>อื่น ๆ</option></select><input id="canonSearch" placeholder="ค้น Canon"></div>
+      <div id="canonList" class="cards"></div>
+    </section>
+
+    <section id="characters" class="view">
+      <div class="section-head"><div><h2>ตัวละคร</h2><p>ประวัติ สถานะ ความรู้ และข้อจำกัด</p></div><button id="openCharacterModal" class="primary">＋ เพิ่มตัวละคร</button></div>
+      <div id="characterList" class="cards"></div>
+    </section>
+
+    <section id="timeline" class="view">
+      <div class="section-head"><div><h2>Timeline</h2><p>เรียงเหตุการณ์ตามวันและตอน</p></div><button id="openTimelineModal" class="primary">＋ เพิ่มเหตุการณ์</button></div>
+      <div id="timelineList" class="timeline"></div>
+    </section>
+
+    <section id="editor" class="view">
+      <div class="editor-layout">
+        <div class="card editor-card">
+          <div class="editor-head"><input id="chapterTitle" class="title-input" placeholder="ชื่อตอน"><div class="editor-actions"><button id="newChapter">บทใหม่</button><button id="saveChapter" class="primary">บันทึก</button></div></div>
+          <textarea id="chapterText" spellcheck="false" placeholder="เริ่มเขียนหรือวางต้นฉบับที่นี่..."></textarea>
+          <div class="editor-footer"><span id="wordStats">0 ตัวอักษร · 0 คำ · 0 ย่อหน้า</span><span id="autosaveState">ยังไม่ได้บันทึก</span></div>
+        </div>
+        <aside class="card chapter-panel"><h3>ตอนที่บันทึกไว้</h3><div id="chapterList" class="list compact"></div></aside>
+      </div>
+    </section>
+
+    <section id="checker" class="view">
+      <div class="section-head"><div><h2>ตรวจความขัดแย้ง</h2><p>ตรวจ Canon, สถานะตัวละคร, Timeline และข้อความซ้ำ</p></div><button id="runChecker" class="primary large">เริ่มตรวจบทปัจจุบัน</button></div>
+      <div id="checkSummary" class="check-summary card">ยังไม่มีผลตรวจ</div>
+      <div id="issueList" class="issues"></div>
+    </section>
+
+    <section id="dna" class="view">
+      <div class="section-head"><div><h2>Writing DNA</h2><p>วิเคราะห์รูปแบบจากต้นฉบับที่นำเข้าและบทที่บันทึก</p></div><button id="analyzeDNA" class="primary">วิเคราะห์ใหม่</button></div>
+      <div id="dnaStats" class="stats"></div>
+      <div class="grid two"><div class="card"><h3>คำที่ใช้บ่อย</h3><div id="topWords" class="tag-cloud"></div></div><div class="card"><h3>ข้อสังเกตรูปแบบการเขียน</h3><div id="dnaNotes" class="list compact"></div></div></div>
+    </section>
+
+    <section id="settings" class="view">
+      <div class="section-head"><div><h2>สำรองข้อมูล</h2><p>ข้อมูลทั้งหมดเก็บอยู่ใน iPad เครื่องนี้</p></div></div>
+      <div class="card settings-stack"><button id="exportBackup" class="primary">ส่งออกไฟล์สำรองทั้งแอป</button><label class="button file-label">นำเข้าไฟล์สำรอง<input id="importBackup" type="file" accept=".json,.noveldb"></label><button id="exportProject">ส่งออกโปรเจกต์ปัจจุบัน</button><button id="deleteProject" class="danger">ลบโปรเจกต์ปัจจุบัน</button><button id="clearAll" class="danger outline">ล้างข้อมูลทั้งหมด</button></div>
+      <div class="card notice"><strong>ข้อจำกัดของเวอร์ชันนี้</strong><p>ตัวตรวจแบบออฟไลน์ใช้กฎและการจับข้อความ จึงยังไม่เทียบเท่า AI ที่เข้าใจความหมายทั้งเรื่อง แต่ทุกผลตรวจจะแสดงเหตุผลและแหล่งอ้างอิงให้ตรวจซ้ำได้</p></div>
+    </section>
+  </main>
+</div>
+
+<div id="modal" class="modal" hidden><div class="modal-backdrop" data-close></div><div class="modal-card"><div class="modal-head"><h3 id="modalTitle"></h3><button data-close>×</button></div><div id="modalBody"></div></div></div>
+<div id="toast"></div>
+<script src="mammoth.browser.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
