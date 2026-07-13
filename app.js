@@ -55,118 +55,135 @@ async function extractDocx(file){const r=await window.mammoth.extractRawText({ar
 async function extractFile(file){const ext=file.name.split('.').pop().toLowerCase();if(['txt','md'].includes(ext))return {text:await file.text()};if(ext==='json'){const raw=await file.text();try{return {text:JSON.stringify(JSON.parse(raw),null,2)}}catch{return {text:raw}}}if(ext==='docx')return extractDocx(file);if(ext==='pdf')return extractPdf(file);throw new Error(`ยังไม่รองรับ .${ext}`)}
 
 // ---- Automatic character extraction from Character Bible / Canon documents ----
+// Parser V9: supports the SHP_08 / SHP_08A database format, including PDF text
+// where Thai words and labels may be split by spaces or page boundaries.
 const CHARACTER_FIELDS={
   name:['ชื่อ','ชื่อจริง','ชื่อตัวละคร','นาม','name','character name'],
-  aliases:['ชื่อเล่น','ชื่อเรียก','ชื่ออื่น','นามแฝง','ฉายา','aliases'],
-  role:['บทบาท','อาชีพ','ตำแหน่ง','ฐานะ','เผ่าพันธุ์','ชนเผ่า','สังกัด','role'],
+  aliases:['ชื่อเล่น','ชื่อเรียก','ชื่ออื่น','นามแฝง','ฉายา','คำนำหน้า','aliases'],
+  species:['เผ่า','เผ่าพันธุ์','ชนเผ่า','species'],
+  role:['บทบาท','อาชีพ','ตำแหน่ง','ฐานะ','สังกัด','role'],
   status:['สถานะ','สถานะปัจจุบัน','status'],
-  facts:['อายุ','เพศ','วันเกิด','ส่วนสูง','น้ำหนัก','กรุ๊ปเลือด','รูปลักษณ์','ลักษณะภายนอก','สีผม','สีตา','นิสัย','บุคลิก','สิ่งที่ชอบ','สิ่งที่ไม่ชอบ','อาหารโปรด','จุดแข็ง','จุดอ่อน','ความสามารถ','พลัง','สกิล','อาวุธ','ภูมิหลัง','ประวัติ','ความสัมพันธ์','เป้าหมาย','ความกลัว','ข้อจำกัด','สิ่งที่รู้','คำพูดติดปาก','แรงจูงใจ']
+  age:['อายุ','อายุเริ่มเรื่อง','อายุจบเรื่อง'],
+  facts:['เพศ','วันเกิด','ส่วนสูง','น้ำหนัก','กรุ๊ปเลือด','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน','รูปลักษณ์','ลักษณะภายนอก','สีผม','สีตา','นิสัย','บุคลิก','สิ่งที่ชอบ','สิ่งที่ไม่ชอบ','อาหารโปรด','จุดแข็ง','จุดอ่อน','ความสามารถ','พลัง','สกิล','อาวุธ','ภูมิหลัง','ประวัติ','ความสัมพันธ์','เป้าหมาย','ความกลัว','ข้อจำกัด','สิ่งที่รู้','คำพูดติดปาก','แรงจูงใจ','เปิดตัว','Arc เด่น']
 };
 const ALL_CHARACTER_LABELS=[...new Set(Object.values(CHARACTER_FIELDS).flat())];
-function normalizeLabel(x){return String(x||'').trim().toLowerCase().replace(/[\s_\-–—.()\[\]]+/g,'')}
+const CHARACTER_SECTIONS=['ข้อมูลพื้นฐาน','ครอบครัว','ภูมิหลัง','ชีวิตวัยเด็ก','ชีวิตก่อนเริ่มเรื่อง','เหตุการณ์ก่อนเข้าหิมพานต์','แรงผลักดัน','ปมในใจ','จุดเด่น','จุดอ่อน','เส้นทางตัวละคร','ความสัมพันธ์สำคัญ','บทบาทในพล็อต','ข้อมูลเชื่อมจักรวาล','สถานะปัจจุบัน','บทบาทหลัก'];
+function normalizeLabel(x){return String(x||'').trim().toLowerCase().replace(/[\s\u200b_\-–—.()\[\]]+/g,'')}
 function normalizedName(x){return String(x||'').toLowerCase().replace(/[\s\u200b\-–—_.()[\]{}'"“”‘’]+/g,'')}
+function flexibleWord(word){return [...String(word)].map(ch=>/\s/.test(ch)?'\\s*':ch.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('\\s*')}
 function isKnownField(label){const n=normalizeLabel(label);return ALL_CHARACTER_LABELS.some(x=>normalizeLabel(x)===n)}
-function parseFieldLine(line){
-  const value=String(line||'').trim();
-  let m=value.match(/^\s*([^:：=]{1,35})\s*[:：=]\s*(.+?)\s*$/);
-  if(!m)m=value.match(/^\s*([^\-–—]{1,35})\s*[\-–—]\s*(.+?)\s*$/);
-  if(!m)return null;
-  const label=m[1].replace(/^\d+[.)]\s*/,'').trim();
-  return isKnownField(label)?{label,value:m[2].trim()}:null;
+function cleanPdfText(text){
+  return String(text||'')
+    .replace(/\r/g,'\n').replace(/\f/g,'\n').replace(/\u00a0|\u200b/g,' ')
+    .replace(/\[หน้า\s*\d+\]/g,'\n')
+    .replace(/[━═─]{5,}/g,'\n')
+    .replace(/[ \t]+/g,' ')
+    .replace(/\n{3,}/g,'\n\n')
+    .trim();
 }
-function prepareCharacterLines(text){
-  let t=String(text||'').replace(/\r/g,'\n').replace(/\u00a0/g,' ');
-  // PDF extraction often returns an entire page as one long line. Restore breaks before known labels.
-  const labels=[...ALL_CHARACTER_LABELS].sort((a,b)=>b.length-a.length).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
-  t=t.replace(new RegExp(`\\s+(?=(?:${labels})\\s*[:：=])`,'gi'),'\n');
-  t=t.replace(/\s+(?=(?:ตัวละคร|CHARACTER)\s*(?:ที่|ลำดับ)?\s*\d*\s*[:：])/gi,'\n');
-  t=t.replace(/\s+(?=\d{1,3}[.)]\s*[ก-๙A-Za-z])/g,'\n');
-  return t.split('\n').map(x=>x.replace(/^\s*[•●▪◦*]+\s*/,'').trim()).filter(Boolean);
+function cleanCharacterName(name){
+  return String(name||'').replace(/^#{1,6}\s*/,'').replace(/^\d{1,3}[.)]\s*/,'')
+    .replace(/^(?:ตัวละคร|CHARACTER)\s*(?:ที่|ลำดับ)?\s*\d*\s*[:：-]?\s*/i,'')
+    .replace(/\s+/g,' ').trim();
 }
-function looksLikeNameHeading(line,lines,index){
-  let v=String(line||'').trim().replace(/^#{1,6}\s*/,'').replace(/^\d{1,3}[.)]\s*/,'').trim();
-  v=v.replace(/^(?:ตัวละคร|CHARACTER)\s*(?:ที่|ลำดับ)?\s*\d*\s*[:：-]?\s*/i,'').trim();
-  if(!v||v.length<2||v.length>80||/[:：=]/.test(v)||/[.!?。！？]/.test(v))return false;
-  if(/^(บท|ตอน|หมวด|หัวข้อ|ข้อมูล|รายละเอียด|ฐานข้อมูล|canon|character bible|timeline|สารบัญ|หมายเหตุ|บทนำ|คำนำ|ภาคผนวก)$/i.test(v))return false;
-  let hits=0;
-  for(let j=index+1;j<Math.min(lines.length,index+12);j++){const f=parseFieldLine(lines[j]);if(f&&isKnownField(f.label))hits++; if(looksLikeSectionBoundary(lines[j]))break}
-  return hits>=1;
+function normalizeStatus(value){const v=String(value||'').trim();if(/เสียชีวิต|ตายแล้ว|dead/i.test(v))return'เสียชีวิต';if(/สูญหาย|หายตัว|missing/i.test(v))return'สูญหาย';if(/มีชีวิต|ยังคงมีชีวิต|alive/i.test(v))return'มีชีวิต';return v||'ไม่ทราบ'}
+function cleanValue(value){return String(value||'').replace(/\[(?:CANON|LOCKED|INFERRED|CHAT)[^\]]*\]/gi,' ').replace(/[━═─]+/g,' ').replace(/\s+/g,' ').trim()}
+function findFlexibleField(block,label){
+  const labels=ALL_CHARACTER_LABELS.sort((a,b)=>b.length-a.length).map(flexibleWord).join('|');
+  const sections=CHARACTER_SECTIONS.sort((a,b)=>b.length-a.length).map(flexibleWord).join('|');
+  const p=flexibleWord(label);
+  const re=new RegExp(`(?:^|\\s)${p}\\s*[:：]\\s*([\\s\\S]*?)(?=\\s*\\[(?:CANON|LOCKED|INFERRED|CHAT)|\\s+(?:${labels})\\s*[:：]|\\s+(?:${sections})\\s*(?:$|\\n)|$)`,'i');
+  const m=block.match(re);return m?cleanValue(m[1]):'';
 }
-function looksLikeSectionBoundary(line){return /^(?:บท|ตอน|หมวด|ภาค|SECTION)\s*\d+/i.test(String(line||'').trim())}
-function normalizeStatus(value){const v=String(value||'').trim();if(/เสียชีวิต|ตายแล้ว|dead/i.test(v))return'เสียชีวิต';if(/สูญหาย|หายตัว|missing/i.test(v))return'สูญหาย';if(/มีชีวิต|ยังอยู่|alive/i.test(v))return'มีชีวิต';return v||'ไม่ทราบ'}
-function cleanCharacterName(name){return String(name||'').replace(/^#{1,6}\s*/,'').replace(/^\d{1,3}[.)]\s*/,'').replace(/^(?:ตัวละคร|CHARACTER)\s*(?:ที่|ลำดับ)?\s*\d*\s*[:：-]?\s*/i,'').trim()}
-function parseCharactersFromText(text,sourceName='เอกสาร'){
-  const lines=prepareCharacterLines(text);
-  const out=[];let cur=null;
-  const flush=()=>{if(!cur||!cur.name)return;const fieldCount=cur.fieldCount||0;if(fieldCount<1)return;const facts=[...new Set(cur.facts.filter(Boolean))];out.push({name:cleanCharacterName(cur.name),aliases:[...new Set(cur.aliases)],role:cur.role||'',status:normalizeStatus(cur.status),facts:facts.join('\n'),limits:[...new Set(cur.limits)].join('\n'),source:sourceName,autoExtracted:true,fieldCount});cur=null};
-  const start=name=>{flush();cur={name:cleanCharacterName(name),aliases:[],role:'',status:'ไม่ทราบ',facts:[],limits:[],fieldCount:0}};
-  for(let i=0;i<lines.length;i++){
-    const line=lines[i],field=parseFieldLine(line);
-    if(field){
-      const label=normalizeLabel(field.label),value=field.value;
-      const isName=CHARACTER_FIELDS.name.some(x=>normalizeLabel(x)===label);
-      if(isName){if(!cur||normalizedName(cur.name)!==normalizedName(value))start(value);cur.fieldCount++;continue}
-      if(!cur){
-        // A field may follow a heading that Mammoth/PDF merged into the previous line.
-        const previous=lines[i-1];
-        if(previous&&looksLikeNameHeading(previous,lines,i-1))start(previous);else continue;
-      }
-      cur.fieldCount++;
-      if(CHARACTER_FIELDS.aliases.some(x=>normalizeLabel(x)===label)){cur.aliases.push(...value.split(/[,，/、]/).map(x=>x.trim()).filter(Boolean));continue}
-      if(CHARACTER_FIELDS.role.some(x=>normalizeLabel(x)===label)){cur.role=cur.role?`${cur.role} · ${value}`:value;continue}
-      if(CHARACTER_FIELDS.status.some(x=>normalizeLabel(x)===label)){cur.status=value;continue}
-      const row=`${field.label}: ${value}`;
-      if(/ข้อจำกัด|สิ่งที่ห้าม|ห้ามขัด|จุดอ่อน/.test(field.label))cur.limits.push(row);else cur.facts.push(row);
-      continue;
-    }
-    if(looksLikeNameHeading(line,lines,i)){start(line);continue}
-    if(cur&&line.length<=320&&!/^\[หน้า\s*\d+\]/.test(line)&&!looksLikeSectionBoundary(line)){
-      if(/^(ข้อจำกัด|สิ่งที่ห้าม|ห้ามขัด|จุดอ่อน)/.test(line))cur.limits.push(line);else if(cur.facts.length&&line.length<240)cur.facts.push(line)
-    }
+function sectionText(block,section){
+  const sections=CHARACTER_SECTIONS.sort((a,b)=>b.length-a.length).map(flexibleWord).join('|');
+  const p=flexibleWord(section);
+  const re=new RegExp(`${p}\\s*([\\s\\S]*?)(?=\\s+(?:${sections})\\s*|$)`,'i');
+  const m=block.match(re);if(!m)return'';
+  return cleanValue(m[1]).replace(/\s*\[LOCKED\]\s*/gi,' ').trim();
+}
+function buildCharacterFromPart(name,block,sourceName){
+  const fields={};
+  for(const labels of Object.values(CHARACTER_FIELDS))for(const label of labels){const v=findFlexibleField(block,label);if(v&&!fields[normalizeLabel(label)])fields[normalizeLabel(label)]=v}
+  const get=(group)=>{for(const label of CHARACTER_FIELDS[group]||[]){const v=fields[normalizeLabel(label)];if(v)return v}return''};
+  const actualName=get('name')||name;
+  const aliases=[];for(const label of CHARACTER_FIELDS.aliases){const v=fields[normalizeLabel(label)];if(v&&!normalizedName(actualName).includes(normalizedName(v)))aliases.push(v)}
+  const species=get('species'),role=get('role'),status=get('status'),age=get('age');
+  const keyFacts=[];
+  if(species)keyFacts.push(`เผ่าพันธุ์: ${species}`);if(age)keyFacts.push(`อายุ: ${age}`);
+  for(const label of ['วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน','เปิดตัว','Arc เด่น']){const v=fields[normalizeLabel(label)];if(v)keyFacts.push(`${label}: ${v}`)}
+  for(const sec of CHARACTER_SECTIONS){
+    if(['ข้อมูลพื้นฐาน','จุดอ่อน'].includes(sec))continue;
+    const v=sectionText(block,sec);if(v&&v.length>2)keyFacts.push(`${sec}: ${v}`);
   }
-  flush();
-  // Merge duplicate names inside the same document instead of discarding later details.
+  const limits=[];const weakness=sectionText(block,'จุดอ่อน');if(weakness)limits.push(`จุดอ่อน: ${weakness}`);
+  const connected=sectionText(block,'ข้อมูลเชื่อมจักรวาล');if(/ห้าม|ต้องไม่|CANON/i.test(connected))limits.push(`ข้อมูลเชื่อมจักรวาล: ${connected}`);
+  return {name:cleanCharacterName(actualName),aliases:[...new Set(aliases.map(cleanCharacterName).filter(Boolean))],role:[role,species].filter(Boolean).join(' · '),status:normalizeStatus(status),facts:keyFacts.join('\n'),limits:limits.join('\n'),source:sourceName,autoExtracted:true,fieldCount:Object.keys(fields).length};
+}
+function parsePartDatabase(text,sourceName){
+  const t=cleanPdfText(text).replace(/\s+(?=PART\s*\d{1,3}\s*[:：])/gi,'\n');
+  const re=/PART\s*(\d{1,3})\s*[:：]\s*([^\n]{2,120})/gi;const matches=[...t.matchAll(re)];const out=[];
+  for(let i=0;i<matches.length;i++){
+    const m=matches[i],name=cleanCharacterName(m[2].replace(/[━═─].*$/,'').trim());
+    const block=t.slice(m.index+m[0].length,i+1<matches.length?matches[i+1].index:t.length);
+    const item=buildCharacterFromPart(name,block,sourceName);
+    if(item.name&&item.fieldCount>=2)out.push(item);
+  }
+  return out;
+}
+function parseStatusDatabase(text,sourceName){
+  const t=cleanPdfText(text);
+  // SHP_08 summary records are usually headed by uppercase romanized names.
+  const header=/\n\s*([A-Z][A-Z0-9 .'-]{2,60})\s*\n/g;const matches=[...t.matchAll(header)];const out=[];
+  for(let i=0;i<matches.length;i++){
+    const block=t.slice(matches[i].index+matches[i][0].length,i+1<matches.length?matches[i+1].index:t.length);
+    const thaiName=findFlexibleField(block,'ชื่อ');if(!thaiName)continue;
+    const species=findFlexibleField(block,'เผ่าพันธุ์')||findFlexibleField(block,'เผ่า');
+    const age=findFlexibleField(block,'อายุ');const role=findFlexibleField(block,'บทบาทหลัก')||findFlexibleField(block,'บทบาท');
+    const statusCurrent=sectionText(block,'สถานะปัจจุบัน')||findFlexibleField(block,'สถานะ');
+    const facts=[species&&`เผ่าพันธุ์: ${species}`,age&&`อายุ: ${age}`,statusCurrent&&`สถานะปัจจุบัน: ${statusCurrent}`].filter(Boolean).join('\n');
+    out.push({name:cleanCharacterName(thaiName),aliases:[matches[i][1].trim()],role:[role,species].filter(Boolean).join(' · '),status:'ไม่ทราบ',facts,limits:'',source:sourceName,autoExtracted:true,fieldCount:2});
+  }
+  return out;
+}
+function parseCharactersFromText(text,sourceName='เอกสาร'){
+  let out=parsePartDatabase(text,sourceName);
+  if(!out.length)out=parseStatusDatabase(text,sourceName);
   const merged=[];
-  for(const item of out){const ex=merged.find(x=>normalizedName(x.name)===normalizedName(item.name));if(!ex){merged.push(item);continue}ex.aliases=[...new Set([...ex.aliases,...item.aliases])];ex.role=ex.role||item.role;ex.status=ex.status==='ไม่ทราบ'?item.status:ex.status;ex.facts=[...new Set([ex.facts,item.facts].filter(Boolean).join('\n').split('\n'))].join('\n');ex.limits=[...new Set([ex.limits,item.limits].filter(Boolean).join('\n').split('\n'))].join('\n')}
-  return merged.filter(x=>x.name&&x.name.length<=80);
+  for(const item of out){
+    if(!item.name||item.name.length>120)continue;
+    const ex=merged.find(x=>normalizedName(x.name)===normalizedName(item.name));
+    if(!ex){merged.push(item);continue}
+    ex.aliases=[...new Set([...ex.aliases,...item.aliases])];ex.role=ex.role||item.role;ex.status=ex.status==='ไม่ทราบ'?item.status:ex.status;
+    ex.facts=[...new Set([ex.facts,item.facts].filter(Boolean).join('\n').split('\n'))].join('\n');
+    ex.limits=[...new Set([ex.limits,item.limits].filter(Boolean).join('\n').split('\n'))].join('\n');
+  }
+  return merged;
 }
 function mergeExtractedCharacters(p,items,doc){
   let added=0,updated=0;
   for(const item of items){
-    if(!item.name||item.name.length>80)continue;
+    if(!item.name||item.name.length>120)continue;
     const keys=[item.name,...(item.aliases||[])].map(normalizedName).filter(Boolean);
     let existing=p.characters.find(c=>[c.name,...(c.aliases||[])].map(normalizedName).some(k=>keys.includes(k)));
     if(existing){
-      const oldFacts=existing.facts||'';
-      const extra=(item.facts||'').split('\n').filter(x=>x&&!oldFacts.includes(x));
+      const oldFacts=existing.facts||'';const extra=(item.facts||'').split('\n').filter(x=>x&&!oldFacts.includes(x));
       if(extra.length)existing.facts=[oldFacts,...extra].filter(Boolean).join('\n');
       existing.limits=[...new Set([existing.limits||'',item.limits||''].filter(Boolean).join('\n').split('\n'))].filter(Boolean).join('\n');
       existing.aliases=[...new Set([...(existing.aliases||[]),...(item.aliases||[])])];
-      if(!existing.role&&item.role)existing.role=item.role;
-      if((!existing.status||existing.status==='ไม่ทราบ')&&item.status)existing.status=item.status;
-      existing.source=[...new Set(String(existing.source||'').split(' | ').filter(Boolean).concat(doc.name))].join(' | ');
-      existing.updatedAt=now();updated++;
-    }else{
-      p.characters.push({id:uid(),name:item.name,status:item.status||'ไม่ทราบ',role:item.role||'',aliases:item.aliases||[],facts:item.facts||'',limits:item.limits||'',source:doc.name,sourceDocumentId:doc.id,autoExtracted:true,updatedAt:now()});added++;
-    }
+      if(!existing.role&&item.role)existing.role=item.role;if((!existing.status||existing.status==='ไม่ทราบ')&&item.status)existing.status=item.status;
+      existing.source=[...new Set(String(existing.source||'').split(' | ').filter(Boolean).concat(doc.name))].join(' | ');existing.updatedAt=now();updated++;
+    }else{p.characters.push({id:uid(),name:item.name,status:item.status||'ไม่ทราบ',role:item.role||'',aliases:item.aliases||[],facts:item.facts||'',limits:item.limits||'',source:doc.name,sourceDocumentId:doc.id,autoExtracted:true,updatedAt:now()});added++}
   }
   return {added,updated,total:items.length};
 }
-function extractCharactersFromDocument(p,doc){
-  if(!doc?.text)return {added:0,updated:0,total:0};
-  const items=parseCharactersFromText(doc.text,doc.name);
-  return mergeExtractedCharacters(p,items,doc);
-}
+function extractCharactersFromDocument(p,doc){if(!doc?.text)return {added:0,updated:0,total:0};return mergeExtractedCharacters(p,parseCharactersFromText(doc.text,doc.name),doc)}
 async function extractCharactersFromAllDocuments(){
-  if(!ensureProject())return;
-  const p=project();let added=0,updated=0,found=0,scanned=0;
-  // Scan every imported document. Some users imported a Character Bible under Canon Database.
-  const docs=p.documents.filter(d=>d.text&&String(d.text).trim());
+  if(!ensureProject())return;const p=project();let added=0,updated=0,found=0,scanned=0;const docs=p.documents.filter(d=>d.text&&String(d.text).trim());
   for(const doc of docs){scanned++;const r=extractCharactersFromDocument(p,doc);added+=r.added;updated+=r.updated;found+=r.total}
-  const box=$('characterExtractStatus');box.hidden=false;box.textContent=found?`ตรวจ ${scanned} เอกสาร · พบ ${found} รายการ · เพิ่มใหม่ ${added} ตัวละคร · อัปเดต ${updated} รายการ กรุณาตรวจทานข้อมูลที่สกัดอัตโนมัติ`:`ตรวจ ${scanned} เอกสารแล้ว แต่ยังไม่พบรูปแบบชื่อและข้อมูลตัวละครที่แยกได้`;
-  if(found){activity('character',`สกัดข้อมูลตัวละครจากเอกสาร เพิ่ม ${added} อัปเดต ${updated}`);await save();toast(`เพิ่มตัวละคร ${added} รายการ`)}else toast('ยังไม่พบข้อมูลตัวละครที่สกัดได้');
+  const box=$('characterExtractStatus');box.hidden=false;box.textContent=found?`ตรวจ ${scanned} เอกสาร · พบ ${found} รายการ · เพิ่มใหม่ ${added} ตัวละคร · อัปเดต ${updated} รายการ กรุณาตรวจทานข้อมูลที่สกัดอัตโนมัติ`:`ตรวจ ${scanned} เอกสารแล้ว แต่ยังไม่พบโครงสร้าง PART หรือระเบียนตัวละครที่รองรับ`;
+  if(found){activity('character',`สกัดข้อมูลตัวละครจากเอกสาร เพิ่ม ${added} อัปเดต ${updated}`);await save();toast(`พบตัวละคร ${found} รายการ`)}else toast('ยังไม่พบข้อมูลตัวละครที่สกัดได้');
 }
-
 
 function canonModal(item=null){if(!ensureProject())return;openModal(item?'แก้ไข Canon':'เพิ่ม Canon',`<div class="form-grid"><div class="row2"><input id="mCanonTitle" placeholder="หัวข้อ"><select id="mCanonCategory"><option>ตัวละคร</option><option>ระบบ</option><option>พลัง</option><option>ไทม์ไลน์</option><option>สถานที่</option><option>ไอเทม</option><option>กฎโลก</option><option>อื่น ๆ</option></select></div><textarea id="mCanonRule" placeholder="ข้อความ Canon ที่ล็อกไว้"></textarea><textarea id="mCanonSource" placeholder="แหล่งอ้างอิง เช่น ชื่อไฟล์ > หัวข้อ > หน้า"></textarea><div class="row2"><select id="mCanonPriority"><option value="100">ผู้ใช้ล็อกเอง — สูงสุด</option><option value="80">Canon Database</option><option value="70">Character Bible</option><option value="60">Timeline</option><option value="40">ต้นฉบับตอน</option><option value="20">เอกสารอ้างอิง</option></select><button id="mSaveCanon" class="primary">บันทึก Canon</button></div></div>`,()=>{if(item){$('mCanonTitle').value=item.title;$('mCanonCategory').value=item.category;$('mCanonRule').value=item.rule;$('mCanonSource').value=item.source;$('mCanonPriority').value=String(item.priority||100)}$('mSaveCanon').onclick=async()=>{const rule=$('mCanonRule').value.trim();if(!rule)return toast('กรุณาใส่ข้อความ Canon');const p=project();const data={id:item?.id||uid(),title:$('mCanonTitle').value.trim()||'ไม่ระบุหัวข้อ',category:$('mCanonCategory').value,rule,source:$('mCanonSource').value.trim(),priority:Number($('mCanonPriority').value),locked:true,updatedAt:now()};if(item)Object.assign(p.canon.find(x=>x.id===item.id),data);else p.canon.push(data);activity('canon',`${item?'แก้ไข':'เพิ่ม'} Canon: ${data.title}`);closeModal();await save();toast('บันทึก Canon แล้ว')}})}
 
