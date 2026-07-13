@@ -70,6 +70,18 @@
       <div id="characterList" class="cards"></div>
     </section>
 
+
+    <section id="characterDetail" class="view">
+      <div class="character-detail-top">
+        <button id="backToCharacters" class="back-button">← กลับไปหน้าตัวละคร</button>
+        <div class="character-detail-actions">
+          <button id="editCharacterDetail">แก้ไขข้อมูล</button>
+          <button id="deleteCharacterDetail" class="danger outline">ลบตัวละคร</button>
+        </div>
+      </div>
+      <div id="characterDetailContent"></div>
+    </section>
+
     <section id="timeline" class="view">
       <div class="section-head"><div><h2>Timeline</h2><p>เรียงเหตุการณ์ตามวันและตอน</p></div><button id="openTimelineModal" class="primary">＋ เพิ่มเหตุการณ์</button></div>
       <div id="timelineList" class="timeline"></div>
@@ -132,6 +144,6 @@
 })();
 </script>
 <script src="mammoth.browser.min.js"></script>
-<script type="module" src="app.js?v=7"></script>
+<script type="module" src="app.js?v=10"></script>
 </body>
 </html>
