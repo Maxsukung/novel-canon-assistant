@@ -167,3 +167,17 @@ html,body{max-width:100%;overflow-x:hidden}
   .pdf-original-document{gap:10px}
   .pdf-original-page{box-shadow:none;border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb}
 }
+
+
+/* Fix 17: native iPad/Safari PDF reader. The PDF itself is displayed by WebKit,
+   so embedded Thai fonts, tone marks and original paragraph layout remain intact. */
+.pdf-native-shell{width:100%;background:#f5f7fb;border-top:1px solid var(--line)}
+.pdf-native-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 18px;background:#fff;border-bottom:1px solid var(--line);font-size:14px;color:#64748b}
+.pdf-native-open{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;padding:9px 14px;border-radius:12px;border:1px solid #c7d2fe;background:#eef2ff;color:#4f46e5;font-weight:700;text-decoration:none}
+.pdf-native-frame{display:block;width:100%;height:calc(100vh - 150px);min-height:760px;border:0;background:#fff}
+.pdf-native-loading,.pdf-native-fallback{max-width:900px;margin:24px auto;padding:24px;text-align:center;background:#fff;border:1px solid var(--line);border-radius:16px;color:#64748b}
+#novelReaderBody:has(.pdf-native-shell){padding:0;background:#fff}
+@media(max-width:900px){
+  .pdf-native-toolbar{align-items:flex-start;font-size:13px;padding:10px 12px}
+  .pdf-native-frame{height:calc(100vh - 118px);min-height:680px}
+}
