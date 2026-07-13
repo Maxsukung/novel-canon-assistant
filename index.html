@@ -55,7 +55,7 @@
 
     <section id="documents" class="view">
       <div class="section-head"><div><h2>คลังเอกสาร</h2><p>รองรับ PDF แบบข้อความ, DOCX, TXT, MD และ JSON</p></div><label class="primary file-label">＋ นำเข้าไฟล์<input id="documentInput" type="file" multiple accept=".pdf,.docx,.txt,.md,.json"></label></div>
-      <div class="toolbar card"><select id="documentType"><option value="canon">Canon Database</option><option value="timeline">Timeline</option><option value="character">Character Bible</option><option value="chapter">ต้นฉบับตอน</option><option value="reference">เอกสารอ้างอิง</option></select><input id="documentSearch" placeholder="ค้นชื่อหรือข้อความในเอกสาร"><span id="importStatus"></span></div>
+      <div class="toolbar card"><select id="documentType"><option value="canon">Canon Database</option><option value="timeline">Timeline</option><option value="character">Character Bible</option><option value="chapter">ต้นฉบับตอน</option><option value="reference">เอกสารอ้างอิง</option></select><input id="documentSearch" placeholder="ค้นชื่อหรือข้อความในเอกสาร"><span id="importStatus"></span><button id="clearDocumentCategory" class="danger">ลบหมวดนี้ทั้งหมด</button></div>
       <div id="documentList" class="cards"></div>
     </section>
 
@@ -159,6 +159,6 @@
 })();
 </script>
 <script src="mammoth.browser.min.js"></script>
-<script type="module" src="app.js?v=10"></script>
+<script type="module" src="app.js?v=20"></script>
 </body>
 </html>

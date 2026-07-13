@@ -193,3 +193,5 @@ html,body{max-width:100%;overflow-x:hidden}
 .novel-reading-prose p{margin:0 0 1.55em;text-indent:0;white-space:pre-wrap;overflow-wrap:anywhere;}
 .novel-reading-sheet{background:#f5f7fb;padding:28px 16px;}
 @media(max-width:700px){.novel-reading-prose{padding:30px 24px;font-size:1.05rem;line-height:1.95}}
+
+#clearDocumentCategory{margin-left:auto;white-space:nowrap}.toolbar{flex-wrap:wrap}.toolbar #importStatus{max-width:100%;overflow-wrap:anywhere}
