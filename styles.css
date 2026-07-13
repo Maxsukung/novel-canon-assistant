@@ -77,3 +77,30 @@ body{min-height:100dvh;padding-top:env(safe-area-inset-top);overscroll-behavior-
 .character-path li:not(:last-child):after{content:'↓';position:absolute;left:19px;bottom:-17px;color:#818cf8;font-weight:800;z-index:2}
 .character-empty-text{margin:0;color:var(--muted)}
 @media(max-width:560px){.character-kv{grid-template-columns:1fr;gap:4px}.character-kv span{font-size:13px}.character-info-section h3{font-size:17px}}
+
+
+/* v12 — harden iPad layout and prevent horizontal overflow */
+html,body{max-width:100%;overflow-x:hidden}
+#appShell,.main,.view,.character-directory,.character-row,.character-row-main,.character-sections-grid,.character-info-section,.basic-facts-grid,.basic-fact{min-width:0;max-width:100%}
+.view{width:100%}
+.character-directory{grid-template-columns:minmax(0,1fr);width:100%}
+.character-row{width:100%;overflow:hidden}
+.character-row-main{overflow:hidden}
+.character-row-title,.character-tags{max-width:100%}
+.character-row-title h3,.character-row-main p,.subtle-tag{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.view-character-btn{flex:0 0 auto}
+.character-sections-grid{grid-template-columns:minmax(0,1fr)}
+.character-info-section,.basic-fact,.character-source-card{overflow:hidden}
+.formatted-character-text,.character-kv p,.character-bullets li,.character-path li,.basic-fact strong{word-break:break-word;overflow-wrap:anywhere;max-width:100%}
+.basic-facts-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:900px){
+  .character-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center}
+  .character-sections-grid{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:640px){
+  .character-row{grid-template-columns:auto minmax(0,1fr)}
+  .view-character-btn{grid-column:2;justify-self:start;margin-top:4px}
+  .basic-facts-grid{grid-template-columns:minmax(0,1fr)}
+  .character-detail-top{width:100%}
+  .character-detail-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}
+}

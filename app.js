@@ -243,8 +243,35 @@ function dedupeCharacterText(value){
   }
   return out.join('\n');
 }
+function splitEmbeddedLabels(raw){
+  const labels=['เผ่าพันธุ์','อายุ','บทบาท','สถานะ','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน','ครอบครัว','ภูมิหลัง','ชีวิตวัยเด็ก','ชีวิตก่อนเริ่มเรื่อง','เหตุการณ์ก่อนเข้าหิมพานต์','แรงผลักดัน','ปมในใจ','จุดเด่น','จุดอ่อน','ข้อจำกัด','เส้นทางตัวละคร','ความสัมพันธ์สำคัญ','บทบาทในพล็อต','ข้อมูลเชื่อมจักรวาล','สถานะปัจจุบัน','บทบาทหลัก','เปิดตัว','Arc เด่น'];
+  const out={...raw};
+  for(const key of Object.keys(out)){
+    let value=repairThaiText(out[key]||'').trim();
+    if(!value)continue;
+    const hits=[];
+    for(const label of labels){
+      if(label===key)continue;
+      const re=new RegExp(`(?:^|\s)${label}\s*[:：]`,'g');
+      let m; while((m=re.exec(value)))hits.push({label,index:m.index+(m[0].startsWith(' ')?1:0)});
+    }
+    hits.sort((a,b)=>a.index-b.index);
+    if(!hits.length)continue;
+    const first=hits[0].index;
+    out[key]=value.slice(0,first).trim();
+    for(let i=0;i<hits.length;i++){
+      const start=hits[i].index;
+      const end=i+1<hits.length?hits[i+1].index:value.length;
+      const chunk=value.slice(start,end).trim();
+      const val=chunk.replace(new RegExp(`^${hits[i].label}\s*[:：]\s*`),'').trim();
+      if(!val)continue;
+      out[hits[i].label]=out[hits[i].label]?`${out[hits[i].label]}\n${val}`:val;
+    }
+  }
+  return out;
+}
 function characterSections(c){
-  const raw={...(c.structured||{})};
+  const raw=splitEmbeddedLabels({...(c.structured||{})});
   const labels=['เผ่าพันธุ์','อายุ','บทบาท','สถานะ','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน','ครอบครัว','ภูมิหลัง','ชีวิตวัยเด็ก','ชีวิตก่อนเริ่มเรื่อง','เหตุการณ์ก่อนเข้าหิมพานต์','แรงผลักดัน','ปมในใจ','จุดเด่น','จุดอ่อน','เส้นทางตัวละคร','ความสัมพันธ์สำคัญ','บทบาทในพล็อต','ข้อมูลเชื่อมจักรวาล','สถานะปัจจุบัน','บทบาทหลัก','เปิดตัว','Arc เด่น'];
   const facts=repairThaiText(c.facts||'');
   const re=new RegExp(`(?:^|\\n)(${labels.sort((a,b)=>b.length-a.length).join('|')})\\s*[:：]\\s*([\\s\\S]*?)(?=\\n(?:${labels.join('|')})\\s*[:：]|$)`,'g');
@@ -282,7 +309,8 @@ function renderStructuredCharacterText(value,section){
   return hasPairs?`<div class="character-kv-list">${pairs.join('')}</div>`:`<ul class="character-bullets">${pairs.join('')}</ul>`;
 }
 function characterSummary(c){
-  const s=characterSections(c);return s['เผ่าพันธุ์']||s['บทบาท']||c.role||'ยังไม่ระบุข้อมูลย่อ';
+  const s=characterSections(c);const value=s['เผ่าพันธุ์']||s['บทบาท']||c.role||'ยังไม่ระบุข้อมูลย่อ';
+  const first=splitCharacterItems(value)[0]||value;return first.length>90?first.slice(0,87)+'…':first;
 }
 function renderCharacters(p){
   const chars=[...(p?.characters||[])].sort((a,b)=>a.name.localeCompare(b.name,'th'));
@@ -295,7 +323,8 @@ function renderCharacterDetail(c){
   const sections=characterSections(c);
   const order=['ข้อมูลพื้นฐาน','เผ่าพันธุ์','อายุ','บทบาท','สถานะ','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน','ครอบครัว','ภูมิหลัง','ชีวิตวัยเด็ก','ชีวิตก่อนเริ่มเรื่อง','เหตุการณ์ก่อนเข้าหิมพานต์','แรงผลักดัน','ปมในใจ','จุดเด่น','จุดอ่อน','ข้อจำกัด','เส้นทางตัวละคร','ความสัมพันธ์สำคัญ','บทบาทในพล็อต','ข้อมูลเชื่อมจักรวาล','สถานะปัจจุบัน','บทบาทหลัก','เปิดตัว','Arc เด่น'];
   const basics=['เผ่าพันธุ์','อายุ','บทบาท','สถานะ','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน'];
-  const basicCards=basics.filter(k=>sections[k]).map(k=>`<div class="basic-fact"><span>${esc(k)}</span><strong>${esc(sections[k])}</strong></div>`).join('');
+  const compactBasic=(value)=>{const first=splitCharacterItems(value)[0]||'';return first.length>120?first.slice(0,117)+'…':first};
+  const basicCards=basics.filter(k=>sections[k]).map(k=>`<div class="basic-fact"><span>${esc(k)}</span><strong>${esc(compactBasic(sections[k]))}</strong></div>`).join('');
   const body=order.filter(k=>!basics.includes(k)&&sections[k]).map(k=>`<section class="character-info-section"><h3>${esc(k)}</h3><div class="formatted-character-text">${renderStructuredCharacterText(sections[k],k)}</div></section>`).join('');
   const extra=Object.entries(sections).filter(([k,v])=>!order.includes(k)&&v).map(([k,v])=>`<section class="character-info-section"><h3>${esc(k)}</h3><div class="formatted-character-text">${renderStructuredCharacterText(v,k)}</div></section>`).join('');
   host.innerHTML=`<article class="character-profile-hero"><div class="character-profile-avatar">${esc((c.name||'?').trim().slice(0,1))}</div><div class="character-profile-heading"><div class="profile-badges"><span class="badge">${esc(c.status||'ไม่ทราบ')}</span>${c.autoExtracted?'<span class="badge auto-badge">สกัดอัตโนมัติ</span>':''}</div><h2>${esc(c.name)}</h2><p>${esc(c.role||'ยังไม่ระบุบทบาท')}</p>${c.aliases?.length?`<div class="aliases">ชื่อเรียกอื่น: ${esc(c.aliases.join(', '))}</div>`:''}</div></article>${basicCards?`<div class="basic-facts-grid">${basicCards}</div>`:''}<div class="character-sections-grid">${body||'<div class="empty">ยังไม่มีข้อมูลแบบจัดหมวดหมู่</div>'}${extra}</div>${c.source?`<div class="character-source-card"><strong>แหล่งข้อมูล</strong><p>${esc(c.source)}</p></div>`:''}`;
