@@ -18,7 +18,7 @@ if (typeof structuredClone !== 'function') {
 let pdfjsLib=null;
 async function getPdfJs(){
   if(!pdfjsLib){
-    pdfjsLib=await import('./pdf.legacy.min.mjs?v=15');
+    pdfjsLib=await import('./pdf.legacy.min.mjs?v=16');
     pdfjsLib.GlobalWorkerOptions.workerSrc='./pdf.legacy.worker.min.mjs';
   }
   return pdfjsLib;
@@ -26,7 +26,7 @@ async function getPdfJs(){
 
 const DB='NovelStudioDB', VER=1, STORE='state', KEY='app';
 let state={version:1,projects:[],activeProjectId:null};
-let currentChapterId=null, currentCharacterId=null, currentNovelDocumentId=null, saveTimer=null, deferredPrompt=null;
+let currentChapterId=null, currentCharacterId=null, currentNovelDocumentId=null, saveTimer=null, deferredPrompt=null, novelRenderToken=0;
 const $=q=>q.startsWith('#')||q.startsWith('.')||q.includes(' ')?document.querySelector(q):document.getElementById(q);
 const uid=()=>crypto.randomUUID?.()||`${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const now=()=>new Date().toISOString();
@@ -121,9 +121,20 @@ function structuredLinesToReadableText(lines){
   flush();
   return out.join('\n\n').replace(/\n{3,}/g,'\n\n').trim();
 }
+function bytesToBase64(bytes){
+  const chunk=0x8000;let binary='';
+  for(let i=0;i<bytes.length;i+=chunk)binary+=String.fromCharCode(...bytes.subarray(i,Math.min(i+chunk,bytes.length)));
+  return btoa(binary);
+}
+function base64ToBytes(value){
+  const binary=atob(String(value||''));const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  return bytes;
+}
 async function extractPdf(file){
   const pdfjs=await getPdfJs();
   const data=new Uint8Array(await file.arrayBuffer());
+  const pdfBase64=bytesToBase64(data);
   const pdf=await pdfjs.getDocument({data,isEvalSupported:false}).promise;
   const pages=[];
   for(let n=1;n<=pdf.numPages;n++){
@@ -136,7 +147,7 @@ async function extractPdf(file){
   }
   // Page labels are stored separately; do not insert them into the prose.
   const combined=pages.map(x=>x.text).filter(Boolean).join('\n\n');
-  return {text:combined,pages,pageCount:pdf.numPages,extractionVersion:15};
+  return {text:combined,pages,pageCount:pdf.numPages,pdfBase64,extractionVersion:16};
 }
 async function extractDocx(file){const r=await window.mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});return {text:r.value.trim(),warnings:r.messages.map(x=>x.message)}}
 async function extractFile(file){const ext=file.name.split('.').pop().toLowerCase();if(['txt','md'].includes(ext))return {text:await file.text()};if(ext==='json'){const raw=await file.text();try{return {text:JSON.stringify(JSON.parse(raw),null,2)}}catch{return {text:raw}}}if(ext==='docx')return extractDocx(file);if(ext==='pdf')return extractPdf(file);throw new Error(`ยังไม่รองรับ .${ext}`)}
@@ -325,11 +336,45 @@ function chapterDisplayTitle(doc){
 }
 function novelExcerpt(text){return cleanNovelText(String(text||'').replace(/\[หน้า\s*\d+\]/g,' ')).replace(/\s+/g,' ').slice(0,180)}
 function renderNovelContent(p){const q=String($('novelSearch')?.value||'').trim().toLowerCase();const docs=(p?.documents||[]).filter(d=>d.type==='chapter').filter(d=>!q||String(d.name||'').toLowerCase().includes(q)||String(d.text||'').toLowerCase().includes(q)).sort((a,b)=>chapterSortNumber(a)-chapterSortNumber(b)||String(a.name).localeCompare(String(b.name),'th'));if($('novelCount'))$('novelCount').textContent=`${docs.length.toLocaleString('th-TH')} บท/ตอน`;$('novelChapterList').innerHTML=docs.length?docs.map((d,i)=>`<article class="novel-chapter-card" data-novel-doc="${d.id}" tabindex="0"><div class="novel-chapter-number">${chapterSortNumber(d)<999999?chapterSortNumber(d):i+1}</div><div class="novel-chapter-main"><span class="badge">ต้นฉบับตอน</span><h3>${esc(chapterDisplayTitle(d))}</h3><p>${esc(novelExcerpt(d.text)||'ไม่มีข้อความที่อ่านได้')}</p><div class="meta">${(d.text?.length||0).toLocaleString('th-TH')} ตัวอักษร${d.pageCount?` · ${d.pageCount} หน้า`:''}</div></div><button class="view-novel-btn" data-open-novel="${d.id}">อ่าน</button></article>`).join(''):'<div class="empty">ยังไม่มีต้นฉบับตอน กรุณานำเข้าไฟล์ในหน้าเอกสารโดยเลือก “ต้นฉบับตอน”</div>';document.querySelectorAll('[data-open-novel]').forEach(b=>b.onclick=e=>{e.stopPropagation();openNovelReader(b.dataset.openNovel)});document.querySelectorAll('[data-novel-doc]').forEach(card=>{card.onclick=()=>openNovelReader(card.dataset.novelDoc);card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openNovelReader(card.dataset.novelDoc)}}})}
-function renderNovelReader(doc){
+async function renderPdfOriginal(doc, token){
+  const host=$('novelReaderBody');
+  host.innerHTML='<div class="pdf-original-loading">กำลังเปิดต้นฉบับ PDF…</div>';
+  try{
+    const pdfjs=await getPdfJs();
+    const bytes=base64ToBytes(doc.pdfBase64);
+    const pdf=await pdfjs.getDocument({data:bytes,isEvalSupported:false}).promise;
+    if(token!==novelRenderToken)return;
+    host.innerHTML='<div class="pdf-original-document" id="pdfOriginalDocument"></div>';
+    const container=$('pdfOriginalDocument');
+    for(let n=1;n<=pdf.numPages;n++){
+      if(token!==novelRenderToken)return;
+      const page=await pdf.getPage(n);
+      const viewport1=page.getViewport({scale:1});
+      const available=Math.min(920,Math.max(320,host.clientWidth-24));
+      const scale=Math.min(2.15,available/viewport1.width);
+      const viewport=page.getViewport({scale});
+      const wrap=document.createElement('section');wrap.className='pdf-original-page';wrap.setAttribute('aria-label',`หน้า ${n}`);
+      const canvas=document.createElement('canvas');canvas.className='pdf-original-canvas';
+      const ratio=Math.min(window.devicePixelRatio||1,2);
+      canvas.width=Math.floor(viewport.width*ratio);canvas.height=Math.floor(viewport.height*ratio);
+      canvas.style.width=`${Math.floor(viewport.width)}px`;canvas.style.height=`${Math.floor(viewport.height)}px`;
+      wrap.appendChild(canvas);container.appendChild(wrap);
+      const ctx=canvas.getContext('2d',{alpha:false});
+      ctx.setTransform(ratio,0,0,ratio,0,0);ctx.fillStyle='#fff';ctx.fillRect(0,0,viewport.width,viewport.height);
+      await page.render({canvasContext:ctx,viewport}).promise;
+    }
+  }catch(err){
+    if(token!==novelRenderToken)return;
+    host.innerHTML=`<div class="empty">เปิดต้นฉบับ PDF ไม่สำเร็จ: ${esc(err?.message||'ข้อผิดพลาดไม่ทราบสาเหตุ')}</div>`;
+  }
+}
+async function renderNovelReader(doc){
+  const token=++novelRenderToken;
   if(!doc){$('novelReaderTitle').textContent='ไม่พบต้นฉบับ';$('novelReaderMeta').textContent='';$('novelReaderBody').innerHTML='<div class="empty">ไฟล์นี้อาจถูกลบแล้ว</div>';return}
   $('novelReaderType').textContent=documentTypeLabel(doc.type);
   $('novelReaderTitle').textContent=chapterDisplayTitle(doc);
   $('novelReaderMeta').textContent=`${(doc.text?.length||0).toLocaleString('th-TH')} ตัวอักษร${doc.pageCount?` · ${doc.pageCount} หน้า`:''} · นำเข้า ${new Date(doc.createdAt).toLocaleString('th-TH')}`;
+  if(doc.pdfBase64){await renderPdfOriginal(doc,token);return}
   const raw=cleanNovelText(doc.text||'');
   if(!raw){$('novelReaderBody').innerHTML='<div class="empty">ไม่พบข้อความที่อ่านได้จากไฟล์นี้</div>';return}
   const body=raw.replace(/^\[หน้า\s*\d+\]\s*/,'').replace(/\n\n\[หน้า\s*\d+\]\s*/g,'\n\n');
@@ -342,7 +387,7 @@ function renderNovelReader(doc){
     return `<p>${esc(block)}</p>`;
   }).join('')}</div></article>`;
 }
-function openNovelReader(id){currentNovelDocumentId=id;renderNovelReader(project()?.documents.find(x=>x.id===id));switchView('novelReader')}
+function openNovelReader(id){currentNovelDocumentId=id;switchView('novelReader');renderNovelReader(project()?.documents.find(x=>x.id===id))}
 function renderCanon(p){const q=$('canonSearch').value.trim().toLowerCase(),f=$('canonFilter').value;const items=(p?.canon||[]).filter(c=>(!f||c.category===f)&&(!q||`${c.title} ${c.rule} ${c.source}`.toLowerCase().includes(q)));$('canonList').innerHTML=items.length?items.map(c=>`<article class="item-card"><span class="badge">${esc(c.category)}</span><h3>${esc(c.title)}</h3><p>${esc(c.rule)}</p><div class="meta">ลำดับความสำคัญ ${c.priority||100} · ${esc(c.source||'ไม่มีแหล่งอ้างอิง')}</div><div class="card-actions"><button data-canon-edit="${c.id}">แก้ไข</button><button data-canon-delete="${c.id}" class="danger outline">ลบ</button></div></article>`).join(''):'<div class="empty">ยังไม่มี Canon ที่ล็อก</div>';document.querySelectorAll('[data-canon-edit]').forEach(b=>b.onclick=()=>canonModal(p.canon.find(x=>x.id===b.dataset.canonEdit)));document.querySelectorAll('[data-canon-delete]').forEach(b=>b.onclick=async()=>{if(confirm('ลบ Canon นี้หรือไม่?')){p.canon=p.canon.filter(x=>x.id!==b.dataset.canonDelete);await save()}})}
 function normalizeComparableText(value){return repairThaiText(String(value||'')).toLowerCase().replace(/[\s\n\r.,;:!?"“”'‘’()\[\]{}|/\\–—_-]+/g,'')}
 function splitCharacterItems(value){
@@ -486,6 +531,8 @@ $('documentInput').onchange=async e=>{
         text:parsed.text||'',
         pages:parsed.pages||null,
         pageCount:parsed.pageCount||null,
+        pdfBase64:parsed.pdfBase64||null,
+        extractionVersion:parsed.extractionVersion||null,
         warnings:parsed.warnings||[],
         size:f.size,
         createdAt:now()

@@ -152,3 +152,18 @@ html,body{max-width:100%;overflow-x:hidden}
   .novel-reading-prose{font-size:18px;line-height:2}
   .novel-reading-prose p{margin-bottom:1.9em}
 }
+
+/* Fix 16 — render PDF pages directly so Thai vowels and tone marks remain exact */
+.novel-reader-body{background:#f4f6f9!important;padding:20px 12px 64px!important;display:block!important}
+.pdf-original-loading{max-width:920px;margin:24px auto;padding:28px;text-align:center;background:#fff;border:1px solid var(--line);border-radius:18px;color:#64748b}
+.pdf-original-document{display:flex;flex-direction:column;align-items:center;gap:18px;width:100%;max-width:960px;margin:0 auto}
+.pdf-original-page{display:flex;justify-content:center;background:#fff;box-shadow:0 4px 18px rgba(15,23,42,.08);overflow:hidden;max-width:100%}
+.pdf-original-canvas{display:block;max-width:100%;height:auto!important;background:#fff}
+.novel-reading-sheet{background:#fff!important;color:#111827!important}
+.novel-reading-prose{color:#111827!important;font-size:18px!important;line-height:1.9!important}
+.novel-reading-prose p{margin:0 0 1.7em!important}
+@media(max-width:700px){
+  .novel-reader-body{padding:10px 0 48px!important}
+  .pdf-original-document{gap:10px}
+  .pdf-original-page{box-shadow:none;border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb}
+}
