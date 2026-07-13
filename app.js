@@ -72,13 +72,25 @@ function normalizeLabel(x){return String(x||'').trim().toLowerCase().replace(/[\
 function normalizedName(x){return String(x||'').toLowerCase().replace(/[\s\u200b\-–—_.()[\]{}'"“”‘’]+/g,'')}
 function flexibleWord(word){return [...String(word)].map(ch=>/\s/.test(ch)?'\\s*':ch.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('\\s*')}
 function isKnownField(label){const n=normalizeLabel(label);return ALL_CHARACTER_LABELS.some(x=>normalizeLabel(x)===n)}
+function repairThaiText(value){
+  let s=String(value||'').normalize('NFC')
+    .replace(/\u25CC/g,'')
+    .replace(/\u00a0|\u200b|\u2060/g,' ')
+    .replace(/([\u0E01-\u0E2E])\s+([\u0E31\u0E33-\u0E3A\u0E47-\u0E4E])/g,'$1$2')
+    .replace(/([\u0E01-\u0E2E])\s*\u0E4D\s*\u0E32/g,'$1\u0E33')
+    .replace(/\u0E4D\s*\u0E32/g,'\u0E33')
+    .replace(/([\u0E31\u0E34-\u0E3A\u0E47-\u0E4E])\s+([\u0E01-\u0E2E])/g,'$1$2')
+    .replace(/\s+([,.;:!?])/g,'$1')
+    .replace(/[ \t]{2,}/g,' ');
+  return s.normalize('NFC');
+}
 function cleanPdfText(text){
-  return String(text||'')
-    .replace(/\r/g,'\n').replace(/\f/g,'\n').replace(/\u00a0|\u200b/g,' ')
+  return repairThaiText(String(text||'')
+    .replace(/\r/g,'\n').replace(/\f/g,'\n')
     .replace(/\[หน้า\s*\d+\]/g,'\n')
     .replace(/[━═─]{5,}/g,'\n')
     .replace(/[ \t]+/g,' ')
-    .replace(/\n{3,}/g,'\n\n')
+    .replace(/\n{3,}/g,'\n\n'))
     .trim();
 }
 function cleanCharacterName(name){
@@ -87,7 +99,7 @@ function cleanCharacterName(name){
     .replace(/\s+/g,' ').trim();
 }
 function normalizeStatus(value){const v=String(value||'').trim();if(/เสียชีวิต|ตายแล้ว|dead/i.test(v))return'เสียชีวิต';if(/สูญหาย|หายตัว|missing/i.test(v))return'สูญหาย';if(/มีชีวิต|ยังคงมีชีวิต|alive/i.test(v))return'มีชีวิต';return v||'ไม่ทราบ'}
-function cleanValue(value){return String(value||'').replace(/\[(?:CANON|LOCKED|INFERRED|CHAT)[^\]]*\]/gi,' ').replace(/[━═─]+/g,' ').replace(/\s+/g,' ').trim()}
+function cleanValue(value){return repairThaiText(String(value||'').replace(/\[(?:CANON|LOCKED|INFERRED|CHAT)[^\]]*\]/gi,' ').replace(/[━═─]+/g,' ').replace(/\s+/g,' ')).trim()}
 function findFlexibleField(block,label){
   const labels=ALL_CHARACTER_LABELS.sort((a,b)=>b.length-a.length).map(flexibleWord).join('|');
   const sections=CHARACTER_SECTIONS.sort((a,b)=>b.length-a.length).map(flexibleWord).join('|');
@@ -213,17 +225,61 @@ function renderProjectSelect(){const sel=$('activeProjectSelect');sel.innerHTML=
 function renderDashboard(p){const data=[['เอกสาร',p?.documents.length||0],['Canon',p?.canon.length||0],['ตัวละคร',p?.characters.length||0],['ตอน',p?.chapters.length||0]];$('stats').innerHTML=data.map(([n,v])=>`<div class="stat"><strong>${v.toLocaleString('th-TH')}</strong><span>${n}</span></div>`).join('');$('recentActivity').innerHTML=p?.activity.length?p.activity.slice(0,7).map(a=>`<div class="list-row"><div class="grow"><strong>${esc(a.text)}</strong><p>${new Date(a.at).toLocaleString('th-TH')}</p></div></div>`).join(''):'<div class="empty">ยังไม่มีกิจกรรม</div>';$('healthList').innerHTML=[['เอกสารฐานข้อมูล',p?.documents.length?'พร้อม':'ยังไม่มี'],['Canon ที่ล็อก',p?.canon.length?`${p.canon.length} รายการ`:'ยังไม่มี'],['ข้อมูลตัวละคร',p?.characters.length?`${p.characters.length} คน`:'ยังไม่มี'],['ไฟล์สำรอง','ควรสำรองเป็นระยะ']].map(([a,b])=>`<div class="health"><strong>${a}</strong><span>${b}</span></div>`).join('')}
 function renderDocuments(p){const q=$('documentSearch').value.trim().toLowerCase();const docs=(p?.documents||[]).filter(d=>!q||d.name.toLowerCase().includes(q)||d.text.toLowerCase().includes(q));$('documentList').innerHTML=docs.length?docs.map(d=>`<article class="item-card"><div><span class="badge">${esc(d.type)}</span></div><h3>${esc(d.name)}</h3><div class="meta">${(d.text?.length||0).toLocaleString('th-TH')} ตัวอักษร${d.pageCount?` · ${d.pageCount} หน้า`:''} · ${new Date(d.createdAt).toLocaleString('th-TH')}</div><details><summary>ดูข้อความที่อ่านได้</summary><pre>${esc((d.text||'').slice(0,14000))}${d.text?.length>14000?'\n…ตัดการแสดงผล':''}</pre></details><div class="card-actions"><button data-doc-delete="${d.id}" class="danger outline">ลบ</button></div></article>`).join(''):'<div class="empty">ยังไม่มีเอกสาร</div>';document.querySelectorAll('[data-doc-delete]').forEach(b=>b.onclick=async()=>{if(confirm('ลบเอกสารนี้หรือไม่?')){p.documents=p.documents.filter(x=>x.id!==b.dataset.docDelete);await save()}})}
 function renderCanon(p){const q=$('canonSearch').value.trim().toLowerCase(),f=$('canonFilter').value;const items=(p?.canon||[]).filter(c=>(!f||c.category===f)&&(!q||`${c.title} ${c.rule} ${c.source}`.toLowerCase().includes(q)));$('canonList').innerHTML=items.length?items.map(c=>`<article class="item-card"><span class="badge">${esc(c.category)}</span><h3>${esc(c.title)}</h3><p>${esc(c.rule)}</p><div class="meta">ลำดับความสำคัญ ${c.priority||100} · ${esc(c.source||'ไม่มีแหล่งอ้างอิง')}</div><div class="card-actions"><button data-canon-edit="${c.id}">แก้ไข</button><button data-canon-delete="${c.id}" class="danger outline">ลบ</button></div></article>`).join(''):'<div class="empty">ยังไม่มี Canon ที่ล็อก</div>';document.querySelectorAll('[data-canon-edit]').forEach(b=>b.onclick=()=>canonModal(p.canon.find(x=>x.id===b.dataset.canonEdit)));document.querySelectorAll('[data-canon-delete]').forEach(b=>b.onclick=async()=>{if(confirm('ลบ Canon นี้หรือไม่?')){p.canon=p.canon.filter(x=>x.id!==b.dataset.canonDelete);await save()}})}
-function characterSections(c){
-  const sections={...(c.structured||{})};
-  const labels=['เผ่าพันธุ์','อายุ','บทบาท','สถานะ','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน','ครอบครัว','ภูมิหลัง','ชีวิตวัยเด็ก','ชีวิตก่อนเริ่มเรื่อง','เหตุการณ์ก่อนเข้าหิมพานต์','แรงผลักดัน','ปมในใจ','จุดเด่น','จุดอ่อน','เส้นทางตัวละคร','ความสัมพันธ์สำคัญ','บทบาทในพล็อต','ข้อมูลเชื่อมจักรวาล','สถานะปัจจุบัน','บทบาทหลัก','เปิดตัว','Arc เด่น'];
-  const facts=String(c.facts||'').replace(new RegExp(`\s+(?=(${labels.map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')})\s*[:：])`,'g'),'\n');
-  for(const line of facts.split(/\n+/)){
-    const m=line.trim().match(/^([^:：]{1,45})[:：]\s*(.+)$/s);if(!m)continue;
-    const key=m[1].trim(),value=m[2].trim();if(!value)continue;
-    if(!sections[key])sections[key]=value;else if(!sections[key].includes(value))sections[key]+='\n'+value;
+function normalizeComparableText(value){return repairThaiText(String(value||'')).toLowerCase().replace(/[\s\n\r.,;:!?"“”'‘’()\[\]{}|/\\–—_-]+/g,'')}
+function splitCharacterItems(value){
+  let text=repairThaiText(value).replace(/\s*\|\s*/g,'\n').replace(/\s*[•●▪]\s*/g,'\n• ');
+  text=text.replace(/\s+(?=(?:บิดา|มารดา|พี่น้อง|ฐานะครอบครัว|เรื่องต้นทาง|สถานะปลายเรื่อง|สถานะหลังจบเรื่อง|เหตุการณ์สำคัญหลังจบเรื่อง|บทบาทในม่านภพ|บทบาท|เผ่าพันธุ์|อายุ|วิถีหลัก|พรสวรรค์|บ้านเกิด|บ้านปัจจุบัน)\s*[:：])/g,'\n');
+  text=text.replace(/\s+↓\s+/g,'\n↓ ');
+  return text.split(/\n+/).map(x=>x.replace(/^[-•●▪]\s*/,'').trim()).filter(Boolean);
+}
+function dedupeCharacterText(value){
+  const seen=new Set(),out=[];
+  for(const item of splitCharacterItems(value)){
+    const key=normalizeComparableText(item);
+    if(!key||key.length<2||seen.has(key))continue;
+    // Drop a shorter duplicate when the same fact is already present in a fuller sentence.
+    if(out.some(x=>{const k=normalizeComparableText(x);return key.length>12&&(k.includes(key)||key.includes(k))}))continue;
+    seen.add(key);out.push(item);
   }
-  if(c.limits&&!sections['ข้อจำกัด'])sections['ข้อจำกัด']=c.limits;
-  return sections;
+  return out.join('\n');
+}
+function characterSections(c){
+  const raw={...(c.structured||{})};
+  const labels=['เผ่าพันธุ์','อายุ','บทบาท','สถานะ','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน','ครอบครัว','ภูมิหลัง','ชีวิตวัยเด็ก','ชีวิตก่อนเริ่มเรื่อง','เหตุการณ์ก่อนเข้าหิมพานต์','แรงผลักดัน','ปมในใจ','จุดเด่น','จุดอ่อน','เส้นทางตัวละคร','ความสัมพันธ์สำคัญ','บทบาทในพล็อต','ข้อมูลเชื่อมจักรวาล','สถานะปัจจุบัน','บทบาทหลัก','เปิดตัว','Arc เด่น'];
+  const facts=repairThaiText(c.facts||'');
+  const re=new RegExp(`(?:^|\\n)(${labels.sort((a,b)=>b.length-a.length).join('|')})\\s*[:：]\\s*([\\s\\S]*?)(?=\\n(?:${labels.join('|')})\\s*[:：]|$)`,'g');
+  for(const m of facts.matchAll(re)){
+    const key=m[1],value=dedupeCharacterText(m[2]);
+    if(!value)continue;
+    if(!raw[key])raw[key]=value;else if(!normalizeComparableText(raw[key]).includes(normalizeComparableText(value)))raw[key]+='\n'+value;
+  }
+  if(c.limits&&!raw['ข้อจำกัด'])raw['ข้อจำกัด']=c.limits;
+  const cleaned={};
+  const globalSeen=new Set();
+  const priority=['เผ่าพันธุ์','อายุ','บทบาท','สถานะ','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน','ครอบครัว','ภูมิหลัง','ชีวิตวัยเด็ก','ชีวิตก่อนเริ่มเรื่อง','เหตุการณ์ก่อนเข้าหิมพานต์','แรงผลักดัน','ปมในใจ','จุดเด่น','จุดอ่อน','ข้อจำกัด','เส้นทางตัวละคร','ความสัมพันธ์สำคัญ','บทบาทในพล็อต','ข้อมูลเชื่อมจักรวาล','สถานะปัจจุบัน','บทบาทหลัก','เปิดตัว','Arc เด่น'];
+  for(const key of [...priority,...Object.keys(raw).filter(k=>!priority.includes(k))]){
+    if(!raw[key])continue;
+    const items=[];
+    for(const item of splitCharacterItems(dedupeCharacterText(raw[key]))){
+      let cleanedItem=item.replace(new RegExp(`^(?:${priority.join('|')})\\s*[:：]\\s*`),'').trim();
+      const cmp=normalizeComparableText(cleanedItem);
+      if(!cmp||globalSeen.has(cmp))continue;
+      // Keep identical information in the most specific/earliest section only.
+      globalSeen.add(cmp);items.push(cleanedItem);
+    }
+    if(items.length)cleaned[key]=items.join('\n');
+  }
+  return cleaned;
+}
+function renderStructuredCharacterText(value,section){
+  const items=splitCharacterItems(dedupeCharacterText(value));
+  if(!items.length)return '<p class="character-empty-text">ยังไม่มีข้อมูล</p>';
+  if(section==='เส้นทางตัวละคร'){
+    return `<ol class="character-path">${items.map(x=>`<li>${esc(x.replace(/^↓\\s*/,''))}</li>`).join('')}</ol>`;
+  }
+  const pairs=items.map(item=>{const m=item.match(/^([^:：]{1,45})[:：]\\s*(.+)$/);return m?`<div class="character-kv"><span>${esc(m[1])}</span><p>${esc(m[2])}</p></div>`:`<li>${esc(item)}</li>`});
+  const hasPairs=pairs.some(x=>x.startsWith('<div'));
+  return hasPairs?`<div class="character-kv-list">${pairs.join('')}</div>`:`<ul class="character-bullets">${pairs.join('')}</ul>`;
 }
 function characterSummary(c){
   const s=characterSections(c);return s['เผ่าพันธุ์']||s['บทบาท']||c.role||'ยังไม่ระบุข้อมูลย่อ';
@@ -240,8 +296,8 @@ function renderCharacterDetail(c){
   const order=['ข้อมูลพื้นฐาน','เผ่าพันธุ์','อายุ','บทบาท','สถานะ','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน','ครอบครัว','ภูมิหลัง','ชีวิตวัยเด็ก','ชีวิตก่อนเริ่มเรื่อง','เหตุการณ์ก่อนเข้าหิมพานต์','แรงผลักดัน','ปมในใจ','จุดเด่น','จุดอ่อน','ข้อจำกัด','เส้นทางตัวละคร','ความสัมพันธ์สำคัญ','บทบาทในพล็อต','ข้อมูลเชื่อมจักรวาล','สถานะปัจจุบัน','บทบาทหลัก','เปิดตัว','Arc เด่น'];
   const basics=['เผ่าพันธุ์','อายุ','บทบาท','สถานะ','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน'];
   const basicCards=basics.filter(k=>sections[k]).map(k=>`<div class="basic-fact"><span>${esc(k)}</span><strong>${esc(sections[k])}</strong></div>`).join('');
-  const body=order.filter(k=>!basics.includes(k)&&sections[k]).map(k=>`<section class="character-info-section"><h3>${esc(k)}</h3><div class="formatted-character-text">${esc(sections[k]).replace(/\n/g,'<br>')}</div></section>`).join('');
-  const extra=Object.entries(sections).filter(([k,v])=>!order.includes(k)&&v).map(([k,v])=>`<section class="character-info-section"><h3>${esc(k)}</h3><div class="formatted-character-text">${esc(v).replace(/\n/g,'<br>')}</div></section>`).join('');
+  const body=order.filter(k=>!basics.includes(k)&&sections[k]).map(k=>`<section class="character-info-section"><h3>${esc(k)}</h3><div class="formatted-character-text">${renderStructuredCharacterText(sections[k],k)}</div></section>`).join('');
+  const extra=Object.entries(sections).filter(([k,v])=>!order.includes(k)&&v).map(([k,v])=>`<section class="character-info-section"><h3>${esc(k)}</h3><div class="formatted-character-text">${renderStructuredCharacterText(v,k)}</div></section>`).join('');
   host.innerHTML=`<article class="character-profile-hero"><div class="character-profile-avatar">${esc((c.name||'?').trim().slice(0,1))}</div><div class="character-profile-heading"><div class="profile-badges"><span class="badge">${esc(c.status||'ไม่ทราบ')}</span>${c.autoExtracted?'<span class="badge auto-badge">สกัดอัตโนมัติ</span>':''}</div><h2>${esc(c.name)}</h2><p>${esc(c.role||'ยังไม่ระบุบทบาท')}</p>${c.aliases?.length?`<div class="aliases">ชื่อเรียกอื่น: ${esc(c.aliases.join(', '))}</div>`:''}</div></article>${basicCards?`<div class="basic-facts-grid">${basicCards}</div>`:''}<div class="character-sections-grid">${body||'<div class="empty">ยังไม่มีข้อมูลแบบจัดหมวดหมู่</div>'}${extra}</div>${c.source?`<div class="character-source-card"><strong>แหล่งข้อมูล</strong><p>${esc(c.source)}</p></div>`:''}`;
 }
 function openCharacterDetail(id){currentCharacterId=id;const c=project()?.characters.find(x=>x.id===id);renderCharacterDetail(c);switchView('characterDetail')}

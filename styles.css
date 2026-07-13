@@ -61,3 +61,19 @@ body{min-height:100dvh;padding-top:env(safe-area-inset-top);overscroll-behavior-
 .character-source-card p{margin:6px 0 0;overflow-wrap:anywhere}
 @media(max-width:900px){.basic-facts-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.character-sections-grid{grid-template-columns:1fr}.character-detail-top{align-items:flex-start}.character-profile-hero{align-items:flex-start}}
 @media(max-width:560px){.character-row{padding:14px}.character-avatar{width:46px;height:46px;border-radius:14px}.view-character-btn{padding:9px 11px}.character-detail-top{flex-direction:column}.character-detail-actions{width:100%}.character-detail-actions button{flex:1}.character-profile-hero{padding:18px;gap:15px}.character-profile-avatar{width:66px;height:66px;border-radius:19px;font-size:29px}.character-profile-heading h2{font-size:24px}.basic-facts-grid{grid-template-columns:1fr}.character-info-section{padding:16px}}
+
+/* v11 — cleaner Thai text, de-duplicated facts, and scan-friendly character detail */
+.character-bullets{margin:0;padding-left:1.25rem;display:grid;gap:9px}
+.character-bullets li{padding-left:3px;line-height:1.72}
+.character-kv-list{display:grid;gap:0}
+.character-kv{display:grid;grid-template-columns:minmax(120px,30%) 1fr;gap:14px;padding:11px 0;border-bottom:1px solid var(--line);align-items:start}
+.character-kv:last-child{border-bottom:0;padding-bottom:0}
+.character-kv:first-child{padding-top:0}
+.character-kv span{font-weight:700;color:#475569}
+.character-kv p{margin:0;line-height:1.75;color:#334155}
+.character-path{list-style:none;counter-reset:path;margin:0;padding:0;display:grid;gap:10px}
+.character-path li{position:relative;padding:12px 14px 12px 46px;background:#f8fafc;border:1px solid var(--line);border-radius:13px;line-height:1.55}
+.character-path li:before{counter-increment:path;content:counter(path);position:absolute;left:12px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:24px;height:24px;border-radius:999px;background:var(--accent);color:#fff;font-size:12px;font-weight:800}
+.character-path li:not(:last-child):after{content:'↓';position:absolute;left:19px;bottom:-17px;color:#818cf8;font-weight:800;z-index:2}
+.character-empty-text{margin:0;color:var(--muted)}
+@media(max-width:560px){.character-kv{grid-template-columns:1fr;gap:4px}.character-kv span{font-size:13px}.character-info-section h3{font-size:17px}}
