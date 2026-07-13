@@ -1,8 +1,8 @@
 let pdfjsLib=null;
 async function getPdfJs(){
   if(!pdfjsLib){
-    pdfjsLib=await import('./pdf.min.mjs');
-    pdfjsLib.GlobalWorkerOptions.workerSrc='./pdf.worker.min.mjs';
+    pdfjsLib=await import('./pdf.legacy.min.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc='./pdf.legacy.worker.min.mjs';
   }
   return pdfjsLib;
 }
