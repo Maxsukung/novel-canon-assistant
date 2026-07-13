@@ -76,7 +76,56 @@ document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>switchView(b.d
 $('newProjectBtn').onclick=createProjectModal;$('activeProjectSelect').onchange=async e=>{state.activeProjectId=e.target.value;currentChapterId=null;$('chapterTitle').value='';$('chapterText').value='';await save()};
 $('openCanonModal').onclick=()=>canonModal();$('openCharacterModal').onclick=()=>characterModal();$('openTimelineModal').onclick=()=>timelineModal();
 $('canonSearch').oninput=()=>renderCanon(project());$('canonFilter').onchange=()=>renderCanon(project());$('documentSearch').oninput=()=>renderDocuments(project());
-$('documentInput').onchange=async e=>{if(!ensureProject())return;const files=[...e.target.files],p=project();for(let i=0;i<files.length;i++){const f=files[i];try{$('importStatus').textContent=`กำลังนำเข้า ${i+1}/${files.length}: ${f.name}`;const parsed=await extractFile(f);p.documents.push({id:uid(),name:f.name,type:$('documentType').value,text:parsed.text,pages:parsed.pages||null,pageCount:parsed.pageCount||null,warnings:parsed.warnings||[],size:f.size,createdAt:now()});activity('document',`นำเข้าเอกสาร ${f.name}`);await setDB(state)}catch(err){toast(`อ่าน ${f.name} ไม่สำเร็จ: ${err.message}`)}}$('importStatus').textContent=`นำเข้าสำเร็จ ${files.length} ไฟล์`;e.target.value='';await save();toast('นำเข้าเอกสารแล้ว')};
+$('documentInput').onchange=async e=>{
+  if(!ensureProject())return;
+  const files=[...e.target.files];
+  const p=project();
+  const type=$('documentType').value;
+  let success=0;
+  const failed=[];
+
+  if(!files.length)return;
+  $('documentInput').disabled=true;
+
+  for(let i=0;i<files.length;i++){
+    const f=files[i];
+    $('importStatus').textContent=`กำลังนำเข้า ${i+1}/${files.length}: ${f.name}`;
+    try{
+      const parsed=await extractFile(f);
+      p.documents.push({
+        id:uid(),
+        name:f.name,
+        type,
+        text:parsed.text||'',
+        pages:parsed.pages||null,
+        pageCount:parsed.pageCount||null,
+        warnings:parsed.warnings||[],
+        size:f.size,
+        createdAt:now()
+      });
+      activity('document',`นำเข้าเอกสาร ${f.name}`);
+      success++;
+      // Persist each completed file so a later failure cannot erase earlier files.
+      await setDB(state);
+    }catch(err){
+      failed.push(`${f.name}: ${err?.message||'อ่านไฟล์ไม่สำเร็จ'}`);
+    }
+    // Give Safari a chance to update the UI between large files.
+    await new Promise(resolve=>setTimeout(resolve,0));
+  }
+
+  e.target.value='';
+  $('documentInput').disabled=false;
+  await save('บันทึกแล้ว');
+
+  if(failed.length){
+    $('importStatus').innerHTML=`นำเข้าสำเร็จ ${success} ไฟล์ · ไม่สำเร็จ ${failed.length} ไฟล์<br><small>${esc(failed.slice(0,8).join(' | '))}${failed.length>8?' …':''}</small>`;
+    toast(`สำเร็จ ${success} ไฟล์ ไม่สำเร็จ ${failed.length} ไฟล์`);
+  }else{
+    $('importStatus').textContent=`นำเข้าสำเร็จ ${success} ไฟล์`;
+    toast(`นำเข้าสำเร็จ ${success} ไฟล์`);
+  }
+};
 $('chapterText').oninput=()=>{updateEditorStats();autosaveDraft()};$('chapterTitle').oninput=autosaveDraft;
 $('newChapter').onclick=()=>{currentChapterId=null;$('chapterTitle').value='';$('chapterText').value='';updateEditorStats();$('autosaveState').textContent='บทใหม่'};
 $('saveChapter').onclick=async()=>{if(!ensureProject())return;const p=project(),title=$('chapterTitle').value.trim()||'บทไม่มีชื่อ',text=$('chapterText').value;if(currentChapterId){const c=p.chapters.find(x=>x.id===currentChapterId);Object.assign(c,{title,text,updatedAt:now()})}else{const c={id:uid(),title,text,createdAt:now(),updatedAt:now()};p.chapters.push(c);currentChapterId=c.id}activity('chapter',`บันทึกตอน ${title}`);await save();$('autosaveState').textContent='บันทึกแล้ว';toast('บันทึกตอนแล้ว')};
