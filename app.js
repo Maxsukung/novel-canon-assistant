@@ -10,7 +10,7 @@ async function getPdfJs(){
 const DB='NovelStudioDB', VER=1, STORE='state', KEY='app';
 let state={version:1,projects:[],activeProjectId:null};
 let currentChapterId=null, saveTimer=null, deferredPrompt=null;
-const $=id=>document.getElementById(id);
+const $=q=>q.startsWith('#')||q.startsWith('.')||q.includes(' ')?document.querySelector(q):document.getElementById(q);
 const uid=()=>crypto.randomUUID?.()||`${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const now=()=>new Date().toISOString();
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
