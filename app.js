@@ -149,7 +149,31 @@ async function extractPdf(file){
   const combined=pages.map(x=>x.text).filter(Boolean).join('\n\n');
   return {text:combined,pages,pageCount:pdf.numPages,pdfBase64,extractionVersion:17,pdfReadMode:'native'};
 }
-async function extractDocx(file){const r=await window.mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});return {text:r.value.trim(),warnings:r.messages.map(x=>x.message)}}
+async function extractDocx(file){
+  const arrayBuffer=await file.arrayBuffer();
+  // Use HTML conversion first so paragraph boundaries from Word are preserved.
+  // extractRawText can merge a heading with the first body paragraph in some DOCX files.
+  const htmlResult=await window.mammoth.convertToHtml({arrayBuffer});
+  const parser=new DOMParser();
+  const dom=parser.parseFromString(`<main id="docxRoot">${htmlResult.value||''}</main>`,'text/html');
+  const root=dom.getElementById('docxRoot');
+  const blocks=[];
+  root?.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,blockquote').forEach((el,index)=>{
+    const text=String(el.textContent||'').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
+    if(!text)return;
+    const tag=el.tagName.toLowerCase();
+    const isHeading=/^h[1-6]$/.test(tag) || !!el.querySelector('strong,b');
+    blocks.push({text,tag,isHeading,index});
+  });
+  // Fallback for unusual DOCX files that Mammoth cannot represent as HTML blocks.
+  if(!blocks.length){
+    const raw=await window.mammoth.extractRawText({arrayBuffer});
+    const rawBlocks=String(raw.value||'').replace(/\r\n?/g,'\n').split(/\n{2,}|\n/).map(x=>x.trim()).filter(Boolean);
+    rawBlocks.forEach((text,index)=>blocks.push({text,tag:'p',isHeading:false,index}));
+    return {text:rawBlocks.join('\n\n'),blocks,warnings:[...(htmlResult.messages||[]),...(raw.messages||[])].map(x=>x.message||String(x))};
+  }
+  return {text:blocks.map(x=>x.text).join('\n\n'),blocks,warnings:(htmlResult.messages||[]).map(x=>x.message||String(x))};
+}
 async function extractFile(file){const ext=file.name.split('.').pop().toLowerCase();if(['txt','md'].includes(ext))return {text:await file.text()};if(ext==='json'){const raw=await file.text();try{return {text:JSON.stringify(JSON.parse(raw),null,2)}}catch{return {text:raw}}}if(ext==='docx')return extractDocx(file);if(ext==='pdf')return extractPdf(file);throw new Error(`ยังไม่รองรับ .${ext}`)}
 
 
@@ -164,7 +188,23 @@ function parseChapterHeading(line){
   if(!m)return null;
   return {kind:m[1],numberText:m[2],number:Number(thaiDigitsToArabic(m[2])),title:m[3].trim(),full:`${m[1]} ${m[2]} : ${m[3].trim()}`};
 }
-function splitNovelChapters(text){
+function splitNovelChapters(text,blocks=null){
+  // Prefer DOCX block boundaries. They preserve the title paragraph separately
+  // from the first paragraph of the chapter, even when visual line wrapping is used.
+  if(Array.isArray(blocks)&&blocks.length){
+    const normalized=blocks.map((b,index)=>({...b,index,text:normalizeHeadingLine(b.text)})).filter(b=>b.text);
+    const starts=[];
+    normalized.forEach((block,index)=>{const h=parseChapterHeading(block.text);if(h)starts.push({index,h})});
+    if(starts.length){
+      return starts.map((start,i)=>{
+        const end=i+1<starts.length?starts[i+1].index:normalized.length;
+        const bodyBlocks=normalized.slice(start.index+1,end).map(x=>x.text);
+        let body=bodyBlocks.join('\n\n').trim();
+        body=body.replace(new RegExp(`\\[จบ${start.h.kind}\\s*${start.h.numberText}[^\\]]*\\]\\s*$`,'i'),'').trim();
+        return {...start.h,text:body};
+      }).filter(ch=>ch.text.length>20);
+    }
+  }
   const source=repairThaiText(String(text||'')).replace(/\r\n?/g,'\n');
   const lines=source.split('\n');
   const starts=[];
@@ -198,7 +238,7 @@ function detectDocumentType(fileName,text){
 }
 function buildChapterDocuments(file,parsed,detectedType){
   if(detectedType!=='chapter')return [];
-  const chapters=splitNovelChapters(parsed.text||'');
+  const chapters=splitNovelChapters(parsed.text||'',parsed.blocks||null);
   if(!chapters.length)return [];
   return chapters.map(ch=>({
     id:uid(),name:ch.full,title:ch.full,chapterKind:ch.kind,chapterNumber:ch.number,chapterNumberText:ch.numberText,
