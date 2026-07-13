@@ -195,3 +195,14 @@ html,body{max-width:100%;overflow-x:hidden}
 @media(max-width:700px){.novel-reading-prose{padding:30px 24px;font-size:1.05rem;line-height:1.95}}
 
 #clearDocumentCategory{margin-left:auto;white-space:nowrap}.toolbar{flex-wrap:wrap}.toolbar #importStatus{max-width:100%;overflow-wrap:anywhere}
+
+
+/* v22 — persistent app branding and dashboard quick import */
+.topbar-brand{display:flex;align-items:center;gap:10px;flex:0 0 auto;margin-right:22px;padding-right:22px;border-right:1px solid var(--line)}
+.topbar-logo{width:40px;height:40px;border-radius:13px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:grid;place-items:center;color:#fff;font-size:16px;font-weight:850;letter-spacing:.02em}
+.topbar-brand-text strong{display:block;font-size:17px;line-height:1.15}.topbar-brand-text small{display:block;color:var(--muted);font-size:11px;margin-top:3px;white-space:nowrap}
+.topbar-page{min-width:0}.topbar-page h1,.topbar-page p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.dashboard-upload{font-weight:700;color:var(--accent);border-color:#c7d2fe;background:#fff}.dashboard-upload input{display:none}
+.stat[data-stat="chapters"]{cursor:pointer}.stat[data-stat="chapters"]:hover{border-color:#c7d2fe}
+@media(max-width:900px){.topbar-brand{margin-right:12px;padding-right:12px}.topbar-brand-text small{display:none}.topbar-brand-text strong{font-size:16px}.topbar-page{flex:1}.topbar-logo{width:38px;height:38px}.hero-actions{width:100%;justify-content:stretch}.hero-actions>*{flex:1}}
+@media(max-width:620px){.topbar-brand-text{display:none}.topbar-brand{border-right:0;padding-right:0;margin-right:4px}.topbar-page h1{font-size:19px}.topbar-page p{font-size:12px}.top-actions #saveState{display:none}}
