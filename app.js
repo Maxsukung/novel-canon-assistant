@@ -276,6 +276,64 @@ function buildChapterDocuments(file,parsed,detectedType,sourceDoc){
   }));
 }
 
+
+
+// v24 — linked knowledge extraction -------------------------------------------------
+const CANON_CATEGORY_RULES=[
+  ['ตัวละคร',/(ตัวละคร|character|บุคคล|เผ่าพันธุ์)/i],['ระบบ',/(ระบบ|system|หน้าต่าง|ระดับ|เลเวล)/i],
+  ['พลัง',/(พลัง|สกิล|เวท|วิชา|ความสามารถ|กสิณ)/i],['ไทม์ไลน์',/(ไทม์ไลน์|timeline|ลำดับเหตุการณ์|ประวัติศาสตร์|วันเวลา)/i],
+  ['สถานที่',/(สถานที่|เมือง|ประเทศ|โลก|ดินแดน|วิหาร|ป่า|สุสาน|นคร)/i],['ไอเทม',/(ไอเทม|item|อาวุธ|วัตถุ|สิ่งของ|ผลึก)/i],
+  ['กฎโลก',/(กฎโลก|กฎ|ข้อห้าม|canon|หลักการ|เงื่อนไข)/i]
+];
+function canonCategoryFor(title,text=''){
+  const hay=`${title} ${text}`;for(const [cat,re] of CANON_CATEGORY_RULES)if(re.test(hay))return cat;return'อื่น ๆ';
+}
+function cleanCanonHeading(line){return repairThaiText(String(line||'').replace(/^\s*(?:#{1,6}|PART\s*\d+\s*[:：]|\d+(?:\.\d+)*[.)]?|[-•])\s*/i,'').replace(/\s+/g,' ').trim())}
+function looksLikeCanonHeading(line,next=''){
+  const t=cleanCanonHeading(line);if(!t||t.length<2||t.length>110)return false;
+  if(/^(?:บทที่|ตอนที่)\s*[๐-๙0-9]+/i.test(t))return false;
+  if(/[:：]$/.test(line)&&t.length<80)return true;
+  if(/^(ข้อมูล|กฎ|ระบบ|พลัง|เผ่าพันธุ์|ตัวละคร|สถานที่|ไทม์ไลน์|Timeline|ประวัติ|ข้อกำหนด|ข้อห้าม|หลักการ|เงื่อนไข|คำศัพท์|องค์กร|ไอเทม|โลก|ภูมิศาสตร์)/i.test(t))return true;
+  if(/^(?:PART|SECTION|CHAPTER)\s*\d+/i.test(line))return true;
+  const short=t.length<=55 && !/[.!?…]$/.test(t) && String(next||'').trim().length>t.length;
+  return short && (/^[A-Z0-9 _-]+$/.test(t)||/^[\u0E00-\u0E7F\s()\-–—]+$/.test(t));
+}
+function extractCanonSections(text,sourceDoc){
+  const lines=cleanPdfText(text||'').split(/\n+/).map(x=>x.trim()).filter(Boolean);const sections=[];let current=null;
+  const flush=()=>{if(!current)return;current.body=current.body.join('\n').trim();if(current.body.length>=8)sections.push(current);current=null};
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i],next=lines[i+1]||'';
+    if(looksLikeCanonHeading(line,next)){flush();current={title:cleanCanonHeading(line).replace(/[:：]$/,''),body:[]};}
+    else if(current)current.body.push(line);
+  }
+  flush();
+  // Fallback: paragraphs with an explicit label.
+  if(!sections.length){for(const para of cleanPdfText(text||'').split(/\n\s*\n/)){const m=para.match(/^([^:：]{2,80})[:：]\s*([\s\S]{8,})$/);if(m)sections.push({title:cleanCanonHeading(m[1]),body:m[2].trim()})}}
+  const seen=new Set();return sections.filter(x=>{const k=normalizeComparableText(`${x.title}|${x.body}`);if(!k||seen.has(k))return false;seen.add(k);return true}).slice(0,500).map((x,index)=>({
+    id:uid(),title:x.title,rule:x.body,category:canonCategoryFor(x.title,x.body),priority:100+index,
+    source:sourceDoc.name,sourceDocumentId:sourceDoc.id,autoExtracted:true,updatedAt:now()
+  }));
+}
+function syncCanonFromDocument(p,sourceDoc){
+  p.canon=(p.canon||[]).filter(c=>c.sourceDocumentId!==sourceDoc.id && !(c.autoExtracted&&c.source===sourceDoc.name));
+  const items=extractCanonSections(sourceDoc.text||'',sourceDoc);p.canon.push(...items);return items.length;
+}
+function novelEntries(p){return [
+  ...derivedChapters(p).map(d=>({...d,_source:'imported'})),
+  ...(p?.chapters||[]).map(c=>({...c,name:c.title,_source:'manual'}))
+].sort((a,b)=>chapterSortNumber(a)-chapterSortNumber(b));}
+function characterAppearances(p,c){
+  const names=[c.name,...(c.aliases||[])].map(x=>String(x||'').trim()).filter(x=>x.length>=2);const out=[];
+  for(const ch of novelEntries(p)){
+    const text=String(ch.text||'');let count=0,first=-1,matched='';
+    for(const n of names){const escaped=n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');const re=new RegExp(escaped,'gi');const hits=[...text.matchAll(re)];if(hits.length){count+=hits.length;if(first<0||hits[0].index<first){first=hits[0].index;matched=n}}}
+    if(count){const start=Math.max(0,first-70),end=Math.min(text.length,first+130);out.push({id:ch.id,source:ch._source,title:chapterDisplayTitle(ch),number:chapterSortNumber(ch),count,snippet:text.slice(start,end).replace(/\s+/g,' ').trim(),matched});}
+  }
+  return out.sort((a,b)=>a.number-b.number);
+}
+function openAppearance(entry){const p=project();const item=entry.source==='manual'?p.chapters.find(x=>x.id===entry.id):p.documents.find(x=>x.id===entry.id);if(!item)return;currentNovelDocumentId=item.id;renderNovelReader(item);switchView('novelReader')}
+function focusSourceDocument(name){$('documentSearch').value=name||'';$('documentType').value='';switchView('documents');renderDocuments(project())}
+
 // ---- Automatic character extraction from Character Bible / Canon documents ----
 // Parser V10: supports the SHP_08 / SHP_08A database format, including PDF text
 // where Thai words and labels may be split by spaces or page boundaries.
@@ -551,7 +609,16 @@ async function renderNovelReader(doc){
   }).join('')}</div></article>`;
 }
 function openNovelReader(key){currentNovelDocumentId=key;switchView('novelReader');renderNovelReader(resolveNovelEntry(project(),key))}
-function renderCanon(p){const q=$('canonSearch').value.trim().toLowerCase(),f=$('canonFilter').value;const items=(p?.canon||[]).filter(c=>(!f||c.category===f)&&(!q||`${c.title} ${c.rule} ${c.source}`.toLowerCase().includes(q)));$('canonList').innerHTML=items.length?items.map(c=>`<article class="item-card"><span class="badge">${esc(c.category)}</span><h3>${esc(c.title)}</h3><p>${esc(c.rule)}</p><div class="meta">ลำดับความสำคัญ ${c.priority||100} · ${esc(c.source||'ไม่มีแหล่งอ้างอิง')}</div><div class="card-actions"><button data-canon-edit="${c.id}">แก้ไข</button><button data-canon-delete="${c.id}" class="danger outline">ลบ</button></div></article>`).join(''):'<div class="empty">ยังไม่มี Canon ที่ล็อก</div>';document.querySelectorAll('[data-canon-edit]').forEach(b=>b.onclick=()=>canonModal(p.canon.find(x=>x.id===b.dataset.canonEdit)));document.querySelectorAll('[data-canon-delete]').forEach(b=>b.onclick=async()=>{if(confirm('ลบ Canon นี้หรือไม่?')){p.canon=p.canon.filter(x=>x.id!==b.dataset.canonDelete);await save()}})}
+function renderCanon(p){
+  const q=$('canonSearch').value.trim().toLowerCase(),f=$('canonFilter').value;
+  const items=(p?.canon||[]).filter(c=>(!f||c.category===f)&&(!q||`${c.title} ${c.rule} ${c.source}`.toLowerCase().includes(q)));
+  const bySource={};for(const c of items){const k=c.source||'เพิ่มด้วยตนเอง';(bySource[k]||(bySource[k]=[])).push(c)}
+  $('canonList').innerHTML=items.length?Object.entries(bySource).map(([source,rows])=>`<section class="canon-source-group"><div class="canon-source-head"><div><span class="badge">${rows[0].autoExtracted?'เชื่อมจากคลังเอกสาร':'เพิ่มด้วยตนเอง'}</span><h3>${esc(source)}</h3><p>${rows.length} หัวข้อ Canon</p></div>${rows[0].sourceDocumentId?`<button data-canon-source="${esc(source)}">เปิดไฟล์ต้นทาง</button>`:''}</div><div class="canon-topic-list">${rows.map(c=>`<article class="item-card canon-topic-card"><div class="canon-topic-title"><span class="badge">${esc(c.category)}</span>${c.autoExtracted?'<span class="subtle-tag">สกัดอัตโนมัติ</span>':''}</div><h3>${esc(c.title)}</h3><p>${esc(c.rule)}</p><div class="meta">ลำดับความสำคัญ ${c.priority||100} · ${esc(c.source||'ไม่มีแหล่งอ้างอิง')}</div><div class="card-actions"><button data-canon-edit="${c.id}">แก้ไข</button><button data-canon-delete="${c.id}" class="danger outline">ลบ</button></div></article>`).join('')}</div></section>`).join(''):'<div class="empty">ยังไม่มี Canon ที่ล็อก — นำเข้าไฟล์ Canon Database ในคลังเอกสาร ระบบจะแยกตามหัวข้อให้อัตโนมัติ</div>';
+  document.querySelectorAll('[data-canon-edit]').forEach(b=>b.onclick=()=>canonModal(p.canon.find(x=>x.id===b.dataset.canonEdit)));
+  document.querySelectorAll('[data-canon-delete]').forEach(b=>b.onclick=async()=>{if(confirm('ลบ Canon นี้หรือไม่?')){p.canon=p.canon.filter(x=>x.id!==b.dataset.canonDelete);await save()}});
+  document.querySelectorAll('[data-canon-source]').forEach(b=>b.onclick=()=>focusSourceDocument(b.dataset.canonSource));
+}
+
 function normalizeComparableText(value){return repairThaiText(String(value||'')).toLowerCase().replace(/[\s\n\r.,;:!?"“”'‘’()\[\]{}|/\\–—_-]+/g,'')}
 function splitCharacterItems(value){
   let text=repairThaiText(value).replace(/\s*\|\s*/g,'\n').replace(/\s*[•●▪]\s*/g,'\n• ');
@@ -642,20 +709,28 @@ function characterSummary(c){
 function renderCharacters(p){
   const chars=[...(p?.characters||[])].sort((a,b)=>a.name.localeCompare(b.name,'th'));
   $('characterList').className='character-directory';
-  $('characterList').innerHTML=chars.length?chars.map(c=>`<article class="character-row" data-character-open="${c.id}"><div class="character-avatar">${esc((c.name||'?').trim().slice(0,1))}</div><div class="character-row-main"><div class="character-row-title"><h3>${esc(c.name)}</h3>${c.autoExtracted?'<span class="badge auto-badge">สกัดอัตโนมัติ</span>':''}</div><p>${esc(characterSummary(c))}</p><div class="character-tags"><span class="badge">${esc(c.status||'ไม่ทราบ')}</span>${c.role?`<span class="subtle-tag">${esc(c.role)}</span>`:''}</div></div><button class="view-character-btn" data-character-open="${c.id}">ดูข้อมูล</button></article>`).join(''):'<div class="empty">ยังไม่มีข้อมูลตัวละคร</div>';
+  $('characterList').innerHTML=chars.length?chars.map(c=>{const apps=characterAppearances(p,c);return `<article class="character-row" data-character-open="${c.id}"><div class="character-avatar">${esc((c.name||'?').trim().slice(0,1))}</div><div class="character-row-main"><div class="character-row-title"><h3>${esc(c.name)}</h3>${c.autoExtracted?'<span class="badge auto-badge">สกัดจากฐานข้อมูล</span>':''}</div><p>${esc(characterSummary(c))}</p><div class="character-tags"><span class="badge">${esc(c.status||'ไม่ทราบ')}</span>${c.role?`<span class="subtle-tag">${esc(c.role)}</span>`:''}<span class="subtle-tag">ปรากฏ ${apps.length} ตอน · ${apps.reduce((n,x)=>n+x.count,0)} ครั้ง</span></div></div><button class="view-character-btn" data-character-open="${c.id}">ดูข้อมูล</button></article>`}).join(''):'<div class="empty">ยังไม่มีข้อมูลตัวละคร — นำเข้า Character Bible หรือ Canon Database แล้วกด “สกัดจากเอกสาร”</div>';
   document.querySelectorAll('[data-character-open]').forEach(el=>el.onclick=e=>{e.stopPropagation();openCharacterDetail(el.dataset.characterOpen)});
 }
+
 function renderCharacterDetail(c){
   const host=$('characterDetailContent');if(!c){host.innerHTML='<div class="empty">ไม่พบข้อมูลตัวละคร</div>';return}
-  const sections=characterSections(c);
+  const p=project(),sections=characterSections(c),apps=characterAppearances(p,c);
   const order=['ข้อมูลพื้นฐาน','เผ่าพันธุ์','อายุ','บทบาท','สถานะ','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน','ครอบครัว','ภูมิหลัง','ชีวิตวัยเด็ก','ชีวิตก่อนเริ่มเรื่อง','เหตุการณ์ก่อนเข้าหิมพานต์','แรงผลักดัน','ปมในใจ','จุดเด่น','จุดอ่อน','ข้อจำกัด','เส้นทางตัวละคร','ความสัมพันธ์สำคัญ','บทบาทในพล็อต','ข้อมูลเชื่อมจักรวาล','สถานะปัจจุบัน','บทบาทหลัก','เปิดตัว','Arc เด่น'];
   const basics=['เผ่าพันธุ์','อายุ','บทบาท','สถานะ','วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน'];
   const compactBasic=(value)=>{const first=splitCharacterItems(value)[0]||'';return first.length>120?first.slice(0,117)+'…':first};
-  const basicCards=basics.filter(k=>sections[k]).map(k=>`<div class="basic-fact"><span>${esc(k)}</span><strong>${esc(compactBasic(sections[k]))}</strong></div>`).join('');
-  const body=order.filter(k=>!basics.includes(k)&&sections[k]).map(k=>`<section class="character-info-section"><h3>${esc(k)}</h3><div class="formatted-character-text">${renderStructuredCharacterText(sections[k],k)}</div></section>`).join('');
-  const extra=Object.entries(sections).filter(([k,v])=>!order.includes(k)&&v).map(([k,v])=>`<section class="character-info-section"><h3>${esc(k)}</h3><div class="formatted-character-text">${renderStructuredCharacterText(v,k)}</div></section>`).join('');
-  host.innerHTML=`<article class="character-profile-hero"><div class="character-profile-avatar">${esc((c.name||'?').trim().slice(0,1))}</div><div class="character-profile-heading"><div class="profile-badges"><span class="badge">${esc(c.status||'ไม่ทราบ')}</span>${c.autoExtracted?'<span class="badge auto-badge">สกัดอัตโนมัติ</span>':''}</div><h2>${esc(c.name)}</h2><p>${esc(c.role||'ยังไม่ระบุบทบาท')}</p>${c.aliases?.length?`<div class="aliases">ชื่อเรียกอื่น: ${esc(c.aliases.join(', '))}</div>`:''}</div></article>${basicCards?`<div class="basic-facts-grid">${basicCards}</div>`:''}<div class="character-sections-grid">${body||'<div class="empty">ยังไม่มีข้อมูลแบบจัดหมวดหมู่</div>'}${extra}</div>${c.source?`<div class="character-source-card"><strong>แหล่งข้อมูล</strong><p>${esc(c.source)}</p></div>`:''}`;
+  const basicCards=basics.filter(k=>sections[k]).map(k=>`<div class="basic-fact" id="char-${encodeURIComponent(k)}"><span>${esc(k)}</span><strong>${esc(compactBasic(sections[k]))}</strong></div>`).join('');
+  const bodyKeys=order.filter(k=>!basics.includes(k)&&sections[k]);
+  const body=bodyKeys.map(k=>`<section class="character-info-section" id="char-${encodeURIComponent(k)}"><h3>${esc(k)}</h3><div class="formatted-character-text">${renderStructuredCharacterText(sections[k],k)}</div></section>`).join('');
+  const extra=Object.entries(sections).filter(([k,v])=>!order.includes(k)&&v).map(([k,v])=>`<section class="character-info-section" id="char-${encodeURIComponent(k)}"><h3>${esc(k)}</h3><div class="formatted-character-text">${renderStructuredCharacterText(v,k)}</div></section>`).join('');
+  const nav=[...basics.filter(k=>sections[k]),...bodyKeys,'ปรากฏในตอน','แหล่งข้อมูล'];
+  const appearances=apps.length?apps.map((a,i)=>`<button class="appearance-row" data-appearance-index="${i}"><div><strong>${esc(a.title)}</strong><p>${esc(a.snippet)}</p></div><span>${a.count} ครั้ง →</span></button>`).join(''):'<div class="empty compact">ยังไม่พบชื่อตัวละครนี้ในเนื้อหานิยายที่นำเข้าหรือเขียนไว้</div>';
+  host.innerHTML=`<article class="character-profile-hero"><div class="character-profile-avatar">${esc((c.name||'?').trim().slice(0,1))}</div><div class="character-profile-heading"><div class="profile-badges"><span class="badge">${esc(c.status||'ไม่ทราบ')}</span>${c.autoExtracted?'<span class="badge auto-badge">สกัดจากฐานข้อมูล</span>':''}<span class="badge">${apps.length} ตอน</span></div><h2>${esc(c.name)}</h2><p>${esc(c.role||'ยังไม่ระบุบทบาท')}</p>${c.aliases?.length?`<div class="aliases">ชื่อเรียกอื่น: ${esc(c.aliases.join(', '))}</div>`:''}</div></article><nav class="character-jump-nav">${nav.map(k=>`<button data-char-jump="char-${encodeURIComponent(k)}">${esc(k)}</button>`).join('')}</nav>${basicCards?`<div class="basic-facts-grid">${basicCards}</div>`:''}<div class="character-sections-grid">${body||'<div class="empty">ยังไม่มีข้อมูลแบบจัดหมวดหมู่</div>'}${extra}</div><section class="character-info-section" id="char-${encodeURIComponent('ปรากฏในตอน')}"><h3>ปรากฏในตอน</h3><p class="section-note">ดึงจากเนื้อหานิยายโดยค้นชื่อหลักและชื่อเรียกอื่น กดรายการเพื่อเปิดตอนนั้น</p><div class="appearance-list">${appearances}</div></section><div class="character-source-card" id="char-${encodeURIComponent('แหล่งข้อมูล')}"><strong>แหล่งข้อมูล</strong><p>${esc(c.source||'เพิ่มด้วยตนเอง')}</p>${c.source?`<button id="openCharacterSource">เปิดไฟล์ต้นทาง</button>`:''}</div>`;
+  document.querySelectorAll('[data-char-jump]').forEach(b=>b.onclick=()=>document.getElementById(b.dataset.charJump)?.scrollIntoView({behavior:'smooth',block:'start'}));
+  document.querySelectorAll('[data-appearance-index]').forEach(b=>b.onclick=()=>openAppearance(apps[Number(b.dataset.appearanceIndex)]));
+  const src=$('openCharacterSource');if(src)src.onclick=()=>focusSourceDocument(c.source);
 }
+
 function openCharacterDetail(id){currentCharacterId=id;const c=project()?.characters.find(x=>x.id===id);renderCharacterDetail(c);switchView('characterDetail')}
 function renderTimeline(p){const items=[...(p?.timeline||[])].sort((a,b)=>(a.order||999999)-(b.order||999999));$('timelineList').innerHTML=items.length?items.map(t=>`<article class="timeline-item"><span class="badge">${esc(t.label||'ไม่ระบุเวลา')}${t.chapter?` · ตอน ${esc(t.chapter)}`:''}</span><h3>${esc(t.title)}</h3><p>${esc(t.details||'')}</p><div class="meta">${esc(t.source||'ไม่มีแหล่งอ้างอิง')}</div><div class="card-actions"><button data-time-edit="${t.id}">แก้ไข</button><button data-time-delete="${t.id}" class="danger outline">ลบ</button></div></article>`).join(''):'<div class="empty">ยังไม่มี Timeline</div>';document.querySelectorAll('[data-time-edit]').forEach(b=>b.onclick=()=>timelineModal(p.timeline.find(x=>x.id===b.dataset.timeEdit)));document.querySelectorAll('[data-time-delete]').forEach(b=>b.onclick=async()=>{if(confirm('ลบเหตุการณ์นี้หรือไม่?')){p.timeline=p.timeline.filter(x=>x.id!==b.dataset.timeDelete);await save()}})}
 function renderChapters(p){
@@ -689,6 +764,8 @@ $('extractCharactersBtn').onclick=extractCharactersFromAllDocuments;
 $('backToCharacters').onclick=()=>switchView('characters');
 $('editCharacterDetail').onclick=()=>{const c=project()?.characters.find(x=>x.id===currentCharacterId);if(c)characterModal(c)};
 $('deleteCharacterDetail').onclick=async()=>{const p=project(),c=p?.characters.find(x=>x.id===currentCharacterId);if(c&&confirm(`ลบตัวละคร “${c.name}” หรือไม่?`)){p.characters=p.characters.filter(x=>x.id!==currentCharacterId);currentCharacterId=null;await save();switchView('characters')}};
+
+$('syncCanonBtn').onclick=async()=>{if(!ensureProject())return;const p=project();let total=0,docs=0;for(const d of sourceDocuments(p,'canon')){total+=syncCanonFromDocument(p,d);docs++}activity('canon',`ซิงก์ Canon จาก ${docs} เอกสาร ได้ ${total} หัวข้อ`);await save();toast(`ซิงก์ Canon ${total} หัวข้อจาก ${docs} เอกสาร`)};
 $('canonSearch').oninput=()=>renderCanon(project());$('canonFilter').onchange=()=>renderCanon(project());$('documentSearch').oninput=()=>renderDocuments(project());$('documentType').onchange=()=>renderDocuments(project());$('novelSearch').oninput=()=>renderNovelContent(project());$('backToNovelContent').onclick=()=>switchView('novelContent');
 $('novelReaderBody').addEventListener('copy',e=>{e.preventDefault();toast('หน้านี้เป็นโหมดอ่านอย่างเดียว')});$('novelReaderBody').addEventListener('cut',e=>e.preventDefault());$('novelReaderBody').addEventListener('contextmenu',e=>e.preventDefault());
 async function importSelectedFiles(files,inputEl,{openLibrary=false}={}){
@@ -715,6 +792,10 @@ async function importSelectedFiles(files,inputEl,{openLibrary=false}={}){
       if(existed){removeSourceAndDerived(p,sourceKey);updatedFiles++}
       p.documents.push(sourceDoc);
       if(chapterDocs.length){p.documents.push(...chapterDocs);createdChapters+=chapterDocs.length}
+      if(detectedType==='canon'){
+        const canonCount=syncCanonFromDocument(p,sourceDoc);
+        sourceDoc.canonExtractedCount=canonCount;
+      }
       if(['character','canon'].includes(detectedType)){
         const extracted=extractCharactersFromDocument(p,sourceDoc);
         if(extracted.total){const box=$('characterExtractStatus');box.hidden=false;box.textContent=`จาก ${f.name}: พบ ${extracted.total} รายการ · เพิ่ม ${extracted.added} · อัปเดต ${extracted.updated}`}
