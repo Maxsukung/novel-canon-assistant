@@ -1,1 +1,5 @@
-{"version":"39","released":"2026-07-14","notes":"V39 cleans OCR headers and footers, merges exact and overlapping duplicate text, preserves readable novel paragraphs, and provides raw/clean views"}
+{
+  "version": "V40",
+  "build": "2026-07-14-android-scroll",
+  "notes": "Android Chrome scrolling compatibility"
+}

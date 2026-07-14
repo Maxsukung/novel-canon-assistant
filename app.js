@@ -1,3 +1,18 @@
+
+// V40: recover from stale mobile drawer state and preserve Android page scrolling.
+(function initMobileScrollRecovery(){
+  const unlock=()=>{
+    document.documentElement.classList.remove('menu-open');
+    document.body.classList.remove('menu-open');
+    document.documentElement.style.removeProperty('overflow');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('position');
+    document.body.style.removeProperty('top');
+  };
+  unlock();
+  window.addEventListener('pageshow', unlock);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) unlock(); });
+})();
 // Safari/iPad compatibility polyfills required by PDF.js 4.x
 if (typeof Promise.withResolvers !== 'function') {
   Promise.withResolvers = function () {
@@ -829,7 +844,7 @@ function discoverCharacterCandidates(p){
   }
   return out.sort((a,b)=>b.confidence-a.confidence||b.chapterIds.length-a.chapterIds.length||b.count-a.count).slice(0,12)
 }
-async function scanNovelCharacters(){if(!ensureProject())return;const p=project();p.characterCandidates=[];const reconciled=reconcileCharacterIdentity(p);const found=discoverCharacterCandidates(p).filter(c=>!canonicalIdentityForName(c.name)&&!findExistingCharacterForName(c.name,p)&&!DESCRIPTOR_HINTS.includes(c.name)&&!/^(?:ชายผู้|หญิงผู้|ชายคน|หญิงคน|หญิงสาวจาก|ชายจาก|หญิงจาก)/.test(c.name));p.characterCandidates=found;activity('character',`วิเคราะห์ตัวละครจากนิยาย: รวมซ้ำ ${reconciled.merged} · เติมชื่อเต็ม ${reconciled.full} · เชื่อมชื่อเรียก ${reconciled.descriptors} · ตัดรายการเดิม ${reconciled.candidates||0} · รอตรวจ ${found.length} (V39)`);await save();toast(`V39 จัดระเบียบแล้ว: รวม ${reconciled.merged} · ชื่อเต็ม ${reconciled.full} · ชื่อเรียก ${reconciled.descriptors} · รอตรวจ ${found.length}`)}
+async function scanNovelCharacters(){if(!ensureProject())return;const p=project();p.characterCandidates=[];const reconciled=reconcileCharacterIdentity(p);const found=discoverCharacterCandidates(p).filter(c=>!canonicalIdentityForName(c.name)&&!findExistingCharacterForName(c.name,p)&&!DESCRIPTOR_HINTS.includes(c.name)&&!/^(?:ชายผู้|หญิงผู้|ชายคน|หญิงคน|หญิงสาวจาก|ชายจาก|หญิงจาก)/.test(c.name));p.characterCandidates=found;activity('character',`วิเคราะห์ตัวละครจากนิยาย: รวมซ้ำ ${reconciled.merged} · เติมชื่อเต็ม ${reconciled.full} · เชื่อมชื่อเรียก ${reconciled.descriptors} · ตัดรายการเดิม ${reconciled.candidates||0} · รอตรวจ ${found.length} (V40)`);await save();toast(`V40 จัดระเบียบแล้ว: รวม ${reconciled.merged} · ชื่อเต็ม ${reconciled.full} · ชื่อเรียก ${reconciled.descriptors} · รอตรวจ ${found.length}`)}
 async function acceptCharacterCandidate(id){const p=project(),c=(p.characterCandidates||[]).find(x=>x.id===id);if(!c)return;if(!isKnownOrEmbeddedCharacter(c.name,p))p.characters.push({id:uid(),name:c.name,status:'ไม่ทราบ',role:'พบจากเนื้อหานิยาย',aliases:[],facts:`พบใน ${c.chapterTitles.length} ตอน รวม ${c.count} ครั้ง`,limits:'',structured:{'ปรากฏครั้งแรก':c.chapterTitles[0]||'','หลักฐานการสกัด':`${(c.kinds||[]).join(', ')} · กริยาที่พบ ${(c.verbs||[]).join(', ')}`},source:'สกัดจากเนื้อหานิยาย',autoExtractedFromNovel:true,updatedAt:now()});p.characterCandidates=p.characterCandidates.filter(x=>x.id!==id);await save();toast(`เพิ่ม ${c.name} เป็นตัวละครแล้ว`)}
 async function ignoreCharacterCandidate(id){const p=project(),c=(p.characterCandidates||[]).find(x=>x.id===id);if(!c)return;p.ignoredCharacterNames=[...new Set([...(p.ignoredCharacterNames||[]),c.name])];p.characterCandidates=p.characterCandidates.filter(x=>x.id!==id);await save();toast(`ซ่อน ${c.name} แล้ว`)}
 async function clearCharacterCandidates(saveAsIgnored=false){const p=project();if(!p)return;const items=p.characterCandidates||[];if(saveAsIgnored)p.ignoredCharacterNames=[...new Set([...(p.ignoredCharacterNames||[]),...items.map(x=>x.name)])];p.characterCandidates=[];await save();renderCharacterCandidates(p);toast(saveAsIgnored?'ปฏิเสธรายการรอตรวจทั้งหมดแล้ว':'ล้างรายการรอตรวจทั้งหมดแล้ว')}
