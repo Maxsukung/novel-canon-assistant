@@ -1372,11 +1372,37 @@ function mergeScannerBlocks(blocks){
   }
   return dedupeScannerParagraphs(clean.join('\n\n').split(/\n{2,}/)).join('\n\n');
 }
+function scannerLineQuality(text){
+  const s=String(text||'').trim();if(!s)return -999;
+  const thai=(s.match(/[\u0E00-\u0E7F]/g)||[]).length;
+  const marks=(s.match(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g)||[]).length;
+  const latin=(s.match(/[A-Za-z]/g)||[]).length;
+  const junk=(s.match(/[^\p{L}\p{N}\s“”"'‘’.,!?…ฯๆ()-]/gu)||[]).length;
+  return thai*2+marks*4+Math.min(latin,20)-junk*5-scannerNoiseScore(s)*6;
+}
+function chooseBetterOcrText(primary,alternate){
+  const a=String(primary||'').split(/\r?\n/),b=String(alternate||'').split(/\r?\n/);
+  if(!a.length)return alternate||'';if(!b.length)return primary||'';
+  // จับคู่บรรทัดใกล้เคียง แล้วเลือกฉบับที่มีอักษรไทย/สระ/วรรณยุกต์สมบูรณ์กว่า
+  const used=new Set(),out=[];
+  for(const line of a){
+    let best=-1,score=0;
+    for(let i=0;i<b.length;i++)if(!used.has(i)){
+      const sim=scannerSimilarity(line,b[i]);if(sim>score){score=sim;best=i}
+    }
+    if(best>=0&&score>.58){used.add(best);out.push(scannerLineQuality(b[best])>scannerLineQuality(line)?b[best]:line)}
+    else out.push(line);
+  }
+  for(let i=0;i<b.length;i++)if(!used.has(i)&&scannerLineQuality(b[i])>10)out.push(b[i]);
+  return out.join('\n');
+}
 function cleanScannerInlineNoise(text){
   let s=String(text||'');
   const junk=[
+    /\bo(?:\s+[A-Za-zก-ฮ๐-๙]{1,3}){1,8}(?=\s+(?:ลำดับตอนที่|ตอนที่|บทที่)|$)/gi,
     /\bo\s*wo(?:\s*=\s*a\s*wo(?:\s*dur\s*a)?)?\b/gi,
-    /(?:^|\s)(?:7\s*J|J\s*7|J)(?=\s|$)/g,
+    /(?:^|\s)(?:7\s*J|J\s*7|J|moro)(?=\s|$)/gi,
+    /(?:^|\s)(?:nw\s*)?[\[({]?[=<>YV\d๐-๙£¥€$&@%.,:+\-\s]{5,}[\])}]?(?=\s|$)/gi,
     /(?:^|\s)[@©®]?\s*(?:\d{1,3}%|[๐-๙]{1,3}%)(?:\s*[()๐-๙A-Za-z@©®=:+-]*)?(?=\s|$)/g,
     /(?:^|\s)(?:[๐-๙0-9]{1,3}\s+){3,}[A-Za-z]?\s*(?=\s|$)/g,
     /(?:^|\s)["']?\d?\s*[«»£¥€$&@=<>]+(?:\s*[A-Za-z0-9๐-๙.,:+-]+){0,8}(?=\s|$)/gu,
@@ -1388,6 +1414,9 @@ function cleanScannerInlineNoise(text){
   for(const re of junk)s=s.replace(re,' ');
   // ตัดช่วงละตินขยะที่คั่นอยู่ระหว่างข้อความไทย แต่รักษาวลีอังกฤษที่มีความหมาย
   s=s.replace(/(^|[\u0E00-\u0E7F]\s+)([A-Za-z][A-Za-z\s=<>«»£¥€$&@%0-9]{5,})(?=\s+[\u0E00-\u0E7F]|$)/g,(m,a,b)=>scannerHasMeaningfulEnglish(b)?m:a);
+  s=s.replace(/(?:^|\s)(?:moro|nw|vv|vo|dur)(?=\s|$)/gi,' ')
+     .replace(/(?:^|\s)[A-Za-z](?=\s|$)/g,' ')
+     .replace(/(?:^|\s)[\[({]?[=<>YV\d๐-๙£¥€$&@%.,:+\-\s]{5,}[\])}]?(?=\s|$)/g,' ');
   return s.replace(/\s+([,.!?;:…])/g,'$1').replace(/[ \t]{2,}/g,' ').trim();
 }
 function cleanScannerText(raw){
@@ -1418,32 +1447,40 @@ function setScannerMode(mode){
   const rawMode=mode==='raw';clean.hidden=rawMode;raw.hidden=!rawMode;
   $('showScannerClean').classList.toggle('primary',!rawMode);$('showScannerRaw').classList.toggle('primary',rawMode);
 }
-async function prepareScannerImage(source){
+async function prepareScannerImage(source,mode='contrast'){
   const img=source instanceof HTMLCanvasElement?source:await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=source});
   const w=img.width||img.naturalWidth,h=img.height||img.naturalHeight;
-  const scale=Math.min(2.25,Math.max(1.35,2200/Math.max(w,1)));
+  const scale=Math.min(2.6,Math.max(1.45,2400/Math.max(w,1)));
   const canvas=document.createElement('canvas');canvas.width=Math.round(w*scale);canvas.height=Math.round(h*scale);
   const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(img,0,0,canvas.width,canvas.height);
-  const data=ctx.getImageData(0,0,canvas.width,canvas.height),px=data.data;
-  for(let i=0;i<px.length;i+=4){
-    const gray=.299*px[i]+.587*px[i+1]+.114*px[i+2];
-    // เพิ่ม contrast โดยไม่ threshold แข็ง เพื่อรักษาสระและวรรณยุกต์เส้นบาง
-    const c=Math.max(0,Math.min(255,(gray-128)*1.55+128));px[i]=px[i+1]=px[i+2]=c;
+  if(mode==='original')return canvas;
+  const data=ctx.getImageData(0,0,canvas.width,canvas.height),px=data.data,gray=new Uint8ClampedArray(canvas.width*canvas.height);
+  for(let i=0,j=0;i<px.length;i+=4,j++)gray[j]=Math.round(.299*px[i]+.587*px[i+1]+.114*px[i+2]);
+  // local adaptive contrast แบบอ่อน ช่วยรักษาจุดวรรณยุกต์เหนือบรรทัด
+  const radius=10,W=canvas.width,H=canvas.height,integral=new Float64Array((W+1)*(H+1));
+  for(let y=1;y<=H;y++){let row=0;for(let x=1;x<=W;x++){row+=gray[(y-1)*W+x-1];integral[y*(W+1)+x]=integral[(y-1)*(W+1)+x]+row}}
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const x1=Math.max(0,x-radius),y1=Math.max(0,y-radius),x2=Math.min(W-1,x+radius),y2=Math.min(H-1,y+radius);
+    const sum=integral[(y2+1)*(W+1)+x2+1]-integral[y1*(W+1)+x2+1]-integral[(y2+1)*(W+1)+x1]+integral[y1*(W+1)+x1];
+    const mean=sum/((x2-x1+1)*(y2-y1+1)),g=gray[y*W+x];
+    const c=Math.max(0,Math.min(255,(g-mean)*1.72+188));const i=(y*W+x)*4;px[i]=px[i+1]=px[i+2]=c;
   }
   ctx.putImageData(data,0,0);return canvas;
+}
+async function scannerRecognize(canvas,label,pass){
+  const result=await window.Tesseract.recognize(canvas,'tha+eng',{
+    logger:m=>{if(m.status&&typeof m.progress==='number')$('scannerStatus').textContent=`${label} (${pass}): ${m.status} ${Math.round(m.progress*100)}%`}
+  },{preserve_interword_spaces:'1',tessedit_pageseg_mode:'6',user_defined_dpi:'300'});
+  return recoverThaiDiacriticsSafe(result?.data?.text||'').trim();
 }
 async function scannerOcrImage(source,label='รูปภาพ'){
   if(!window.Tesseract)throw new Error('ยังโหลดตัวอ่าน OCR ไม่สำเร็จ กรุณาเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่');
   const status=$('scannerStatus');status.hidden=false;status.textContent=`กำลังปรับภาพและอ่านข้อความจาก ${label}…`;
-  const prepared=await prepareScannerImage(source);
-  const result=await window.Tesseract.recognize(prepared,'tha+eng',{
-    logger:m=>{if(m.status&&typeof m.progress==='number')status.textContent=`${label}: ${m.status} ${Math.round(m.progress*100)}%`}
-  },{
-    preserve_interword_spaces:'1',
-    tessedit_pageseg_mode:'6',
-    user_defined_dpi:'300'
-  });
-  return recoverThaiDiacriticsSafe(result?.data?.text||'').trim();
+  const contrast=await prepareScannerImage(source,'contrast');
+  const original=await prepareScannerImage(source,'original');
+  const first=await scannerRecognize(contrast,label,'อ่านเส้นคม');
+  const second=await scannerRecognize(original,label,'ตรวจวรรณยุกต์');
+  return recoverThaiDiacriticsSafe(chooseBetterOcrText(first,second)).trim();
 }
 async function scanPdfFile(file){
   const lib=await getPdfJs(),bytes=new Uint8Array(await file.arrayBuffer());
@@ -1473,7 +1510,7 @@ async function handleScannerFiles(files){
   status.textContent=`อ่านเสร็จแล้ว ${ordered.length} ไฟล์ · ทำความสะอาดหัว–ท้ายและรวมข้อความซ้ำแล้ว`;
 }
 
-const APP_VERSION='44';
+const APP_VERSION='45';
 let updateReloading=false,lastSeenVersion=APP_VERSION;
 async function checkForAppUpdate(registration){
   try{
