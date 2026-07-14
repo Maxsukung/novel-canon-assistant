@@ -322,11 +322,38 @@ function novelEntries(p){return [
   ...derivedChapters(p).map(d=>({...d,_source:'imported'})),
   ...(p?.chapters||[]).map(c=>({...c,name:c.title,_source:'manual'}))
 ].sort((a,b)=>chapterSortNumber(a)-chapterSortNumber(b));}
+function characterAliasCandidates(c){
+  const raw=[c.name,...(c.aliases||[])].map(x=>repairThaiText(String(x||'')).replace(/\s+/g,' ').trim()).filter(Boolean);
+  const titles=/^(?:นาย|นาง|นางสาว|เด็กชาย|เด็กหญิง|เจ้าหญิง|เจ้าชาย|พระ|หลวงตา|ฤๅษี|ท่าน|องค์|พญา|ผู้กอง|กัปตัน)\s*/;
+  const out=[];
+  for(const value of raw){
+    const cleaned=value.replace(titles,'').trim();
+    out.push(value,cleaned);
+    const parts=cleaned.split(/\s+/).filter(Boolean);
+    if(parts.length>1){
+      // In Thai prose the given name is normally used without surname/title.
+      out.push(parts[0]);
+      if(parts[0].length<=3 && parts.length>1)out.push(parts.slice(0,2).join(' '));
+    }
+    const epithet=cleaned.match(/^(.+?)\s+(?:ไร้นาม|ญาณคีรี|เวหาวายุ|ศรีบาดาล|หิมพานต์กานต์|วงศ์สุริยัน)$/);
+    if(epithet)out.push(epithet[1]);
+  }
+  return [...new Set(out.map(x=>x.trim()).filter(x=>x.length>=3))]
+    .sort((a,b)=>b.length-a.length);
+}
+function countNameHits(text,name){
+  const source=String(text||''), escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  // Thai has no reliable word boundary. Guard only against Latin/digit adjacency;
+  // this still matches short Thai given names inside normal prose.
+  const re=new RegExp(`(^|[^A-Za-z0-9_])(${escaped})(?=$|[^A-Za-z0-9_])`,'giu');
+  let m,count=0,first=-1;while((m=re.exec(source))){count++;const pos=m.index+m[1].length;if(first<0)first=pos;if(re.lastIndex===m.index)re.lastIndex++;}
+  return {count,first};
+}
 function characterAppearances(p,c){
-  const names=[c.name,...(c.aliases||[])].map(x=>String(x||'').trim()).filter(x=>x.length>=2);const out=[];
+  const names=characterAliasCandidates(c);const out=[];
   for(const ch of novelEntries(p)){
     const text=String(ch.text||'');let count=0,first=-1,matched='';
-    for(const n of names){const escaped=n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');const re=new RegExp(escaped,'gi');const hits=[...text.matchAll(re)];if(hits.length){count+=hits.length;if(first<0||hits[0].index<first){first=hits[0].index;matched=n}}}
+    for(const n of names){const hit=countNameHits(text,n);if(hit.count){count+=hit.count;if(first<0||hit.first<first){first=hit.first;matched=n}}}
     if(count){const start=Math.max(0,first-70),end=Math.min(text.length,first+130);out.push({id:ch.id,source:ch._source,title:chapterDisplayTitle(ch),number:chapterSortNumber(ch),count,snippet:text.slice(start,end).replace(/\s+/g,' ').trim(),matched});}
   }
   return out.sort((a,b)=>a.number-b.number);
@@ -460,6 +487,35 @@ function canonicalPartName(sourceName,partNumber,rawName){
   }
   return repairExtractedThaiName(rawName);
 }
+const NON_CHARACTER_NAMES=[
+  'database','character database','canon database','history database','flora database','mystery database','creature database','power system','architecture','complete','locked','status','purpose','part','chapter','arc','course correction','writing directive','project file audit','project writing protocol','หลังจบ','จะได้','เป็นหลัก','เปิดสถานการณ์','พัฒนาเหตุการณ์','จุดพีคและจบบท'
+];
+function isPlausibleCharacterName(name,item={}){
+  const n=repairExtractedThaiName(name), low=n.toLowerCase(), compact=normalizedName(n);
+  if(!n||n.length<2||n.length>70)return false;
+  if(/^[-+]?\d+(?:\.\d+)?$/.test(n)||/^[A-Z0-9 _:\-().]{3,}$/i.test(n))return false;
+  if(NON_CHARACTER_NAMES.some(x=>low===x||low.includes(x)))return false;
+  if(/\b(?:ARC|DATABASE|STATUS|VERSION|PURPOSE|COMPLETE|LOCKED|CHAPTER|PROJECT|PROTOCOL|ARCHITECTURE|INDEX|REFERENCE|SYSTEM)\b/i.test(n))return false;
+  if(/^(?:และ|หรือ|จะ|ได้|เป็น|หลัง|ก่อน|เปิด|ปิด|พัฒนา|จุด|ผล|ข้อมูล|เอกสาร|บทที่|ตอนที่)/.test(n))return false;
+  if(/[,:;=]{2,}/.test(n))return false;
+  const thaiLetters=(n.match(/[ก-ฮ]/g)||[]).length;
+  const latinLetters=(n.match(/[A-Za-z]/g)||[]).length;
+  if(thaiLetters<2 && latinLetters<3)return false;
+  const evidence=(item.fieldCount||0)+Object.values(item.structured||{}).filter(Boolean).length;
+  return evidence>=2;
+}
+function enrichCharacterAliases(item){
+  const aliases=[...(item.aliases||[])];
+  const name=repairExtractedThaiName(item.name);
+  const stripped=name.replace(/^(?:นาย|นาง|นางสาว|เด็กชาย|เด็กหญิง|เจ้าหญิง|เจ้าชาย|พระ|หลวงตา|ฤๅษี|ท่าน|องค์|พญา)\s*/,'').trim();
+  if(stripped!==name)aliases.push(stripped);
+  const parts=stripped.split(/\s+/).filter(Boolean);
+  if(parts.length>1 && parts[0].length>=3)aliases.push(parts[0]);
+  if(/^ฤๅษี/.test(name)){const m=name.match(/^ฤๅษี\s*([^\s]+)/);if(m)aliases.push(`ฤๅษี${m[1]}`,m[1]);}
+  if(/ไร้นาม$/.test(stripped))aliases.push(stripped.replace(/\s*ไร้นาม$/,''));
+  item.aliases=[...new Set(aliases.map(repairExtractedThaiName).filter(a=>a&&normalizedName(a)!==normalizedName(name)&&a.length>=3))];
+  return item;
+}
 function parsePartDatabase(text,sourceName){
   const raw=String(text||'').replace(/\r/g,'\n').replace(/\f/g,'\n');
   // Do not require PART to begin on a new line. PDF.js may concatenate the separator,
@@ -505,16 +561,23 @@ function parseStatusDatabase(text,sourceName){
   return out;
 }
 function parseCharactersFromText(text,sourceName='เอกสาร'){
+  const source=String(sourceName||'');
+  const isCharacterDoc=/SHP[_-]?08A?|CHARACTER(?:_|\s|-)?(?:DATABASE|BIBLE)|ตัวละคร/i.test(source);
+  // Never mine generic Canon/Master files as character records. Those documents contain
+  // headings such as DATABASE, COMPLETE and ARC that previously became fake people.
+  if(!isCharacterDoc)return [];
   let out=parsePartDatabase(text,sourceName);
   if(!out.length)out=parseStatusDatabase(text,sourceName);
   const merged=[];
-  for(const item of out){
-    if(!item.name||item.name.length>120)continue;
-    const ex=merged.find(x=>normalizedName(x.name)===normalizedName(item.name));
+  for(let item of out){
+    item=enrichCharacterAliases(item);
+    if(!isPlausibleCharacterName(item.name,item))continue;
+    const ex=merged.find(x=>normalizedName(x.name)===normalizedName(item.name)||[...x.aliases,...item.aliases].some(a=>normalizedName(a)===normalizedName(item.name)));
     if(!ex){merged.push(item);continue}
     ex.aliases=[...new Set([...ex.aliases,...item.aliases])];ex.role=ex.role||item.role;ex.status=ex.status==='ไม่ทราบ'?item.status:ex.status;
     ex.facts=[...new Set([ex.facts,item.facts].filter(Boolean).join('\n').split('\n'))].join('\n');
     ex.limits=[...new Set([ex.limits,item.limits].filter(Boolean).join('\n').split('\n'))].join('\n');
+    ex.structured={...(ex.structured||{}),...(item.structured||{})};
   }
   return merged;
 }
@@ -538,7 +601,7 @@ function mergeExtractedCharacters(p,items,doc){
 function extractCharactersFromDocument(p,doc){if(!doc?.text)return {added:0,updated:0,total:0};return mergeExtractedCharacters(p,parseCharactersFromText(doc.text,doc.name),doc)}
 async function extractCharactersFromAllDocuments(){
   if(!ensureProject())return;const p=project();let added=0,updated=0,found=0,scanned=0;const details=[];
-  const docs=p.documents.filter(d=>d.text&&String(d.text).trim()&&(['character','canon'].includes(d.type)||/SHP[_-]?08A?|CHARACTER/i.test(d.name||'')));
+  const docs=p.documents.filter(d=>d.text&&String(d.text).trim()&&(d.type==='character'||/SHP[_-]?08A?|CHARACTER(?:_|\s|-)?(?:DATABASE|BIBLE)|ตัวละคร/i.test(d.name||'')));
   // Rebuild automatic records on every sync so old failed parses do not remain visible.
   p.characters=(p.characters||[]).filter(c=>!c.autoExtracted);
   for(const doc of docs){
@@ -871,7 +934,7 @@ async function importSelectedFiles(files,inputEl,{openLibrary=false}={}){
         const canonCount=syncCanonFromDocument(p,sourceDoc);
         sourceDoc.canonExtractedCount=canonCount;
       }
-      if(['character','canon'].includes(detectedType)){
+      if(detectedType==='character'||/SHP[_-]?08A?|CHARACTER(?:_|\s|-)?(?:DATABASE|BIBLE)|ตัวละคร/i.test(f.name||'')){
         const extracted=extractCharactersFromDocument(p,sourceDoc);
         if(extracted.total){const box=$('characterExtractStatus');box.hidden=false;box.textContent=`จาก ${f.name}: พบ ${extracted.total} รายการ · เพิ่ม ${extracted.added} · อัปเดต ${extracted.updated}`}
       }
