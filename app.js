@@ -844,7 +844,7 @@ function discoverCharacterCandidates(p){
   }
   return out.sort((a,b)=>b.confidence-a.confidence||b.chapterIds.length-a.chapterIds.length||b.count-a.count).slice(0,12)
 }
-async function scanNovelCharacters(){if(!ensureProject())return;const p=project();p.characterCandidates=[];const reconciled=reconcileCharacterIdentity(p);const found=discoverCharacterCandidates(p).filter(c=>!canonicalIdentityForName(c.name)&&!findExistingCharacterForName(c.name,p)&&!DESCRIPTOR_HINTS.includes(c.name)&&!/^(?:ชายผู้|หญิงผู้|ชายคน|หญิงคน|หญิงสาวจาก|ชายจาก|หญิงจาก)/.test(c.name));p.characterCandidates=found;activity('character',`วิเคราะห์ตัวละครจากนิยาย: รวมซ้ำ ${reconciled.merged} · เติมชื่อเต็ม ${reconciled.full} · เชื่อมชื่อเรียก ${reconciled.descriptors} · ตัดรายการเดิม ${reconciled.candidates||0} · รอตรวจ ${found.length} (V42)`);await save();toast(`V42 จัดระเบียบแล้ว: รวม ${reconciled.merged} · ชื่อเต็ม ${reconciled.full} · ชื่อเรียก ${reconciled.descriptors} · รอตรวจ ${found.length}`)}
+async function scanNovelCharacters(){if(!ensureProject())return;const p=project();p.characterCandidates=[];const reconciled=reconcileCharacterIdentity(p);const found=discoverCharacterCandidates(p).filter(c=>!canonicalIdentityForName(c.name)&&!findExistingCharacterForName(c.name,p)&&!DESCRIPTOR_HINTS.includes(c.name)&&!/^(?:ชายผู้|หญิงผู้|ชายคน|หญิงคน|หญิงสาวจาก|ชายจาก|หญิงจาก)/.test(c.name));p.characterCandidates=found;activity('character',`วิเคราะห์ตัวละครจากนิยาย: รวมซ้ำ ${reconciled.merged} · เติมชื่อเต็ม ${reconciled.full} · เชื่อมชื่อเรียก ${reconciled.descriptors} · ตัดรายการเดิม ${reconciled.candidates||0} · รอตรวจ ${found.length} (V43)`);await save();toast(`V43 จัดระเบียบแล้ว: รวม ${reconciled.merged} · ชื่อเต็ม ${reconciled.full} · ชื่อเรียก ${reconciled.descriptors} · รอตรวจ ${found.length}`)}
 async function acceptCharacterCandidate(id){const p=project(),c=(p.characterCandidates||[]).find(x=>x.id===id);if(!c)return;if(!isKnownOrEmbeddedCharacter(c.name,p))p.characters.push({id:uid(),name:c.name,status:'ไม่ทราบ',role:'พบจากเนื้อหานิยาย',aliases:[],facts:`พบใน ${c.chapterTitles.length} ตอน รวม ${c.count} ครั้ง`,limits:'',structured:{'ปรากฏครั้งแรก':c.chapterTitles[0]||'','หลักฐานการสกัด':`${(c.kinds||[]).join(', ')} · กริยาที่พบ ${(c.verbs||[]).join(', ')}`},source:'สกัดจากเนื้อหานิยาย',autoExtractedFromNovel:true,updatedAt:now()});p.characterCandidates=p.characterCandidates.filter(x=>x.id!==id);await save();toast(`เพิ่ม ${c.name} เป็นตัวละครแล้ว`)}
 async function ignoreCharacterCandidate(id){const p=project(),c=(p.characterCandidates||[]).find(x=>x.id===id);if(!c)return;p.ignoredCharacterNames=[...new Set([...(p.ignoredCharacterNames||[]),c.name])];p.characterCandidates=p.characterCandidates.filter(x=>x.id!==id);await save();toast(`ซ่อน ${c.name} แล้ว`)}
 async function clearCharacterCandidates(saveAsIgnored=false){const p=project();if(!p)return;const items=p.characterCandidates||[];if(saveAsIgnored)p.ignoredCharacterNames=[...new Set([...(p.ignoredCharacterNames||[]),...items.map(x=>x.name)])];p.characterCandidates=[];await save();renderCharacterCandidates(p);toast(saveAsIgnored?'ปฏิเสธรายการรอตรวจทั้งหมดแล้ว':'ล้างรายการรอตรวจทั้งหมดแล้ว')}
@@ -1242,7 +1242,7 @@ $('analyzeDNA').onclick=analyzeDNA;
 $('scannerInput').onchange=async e=>{const files=[...(e.target.files||[])];if(files.length)await handleScannerFiles(files);e.target.value=''};
 $('copyScannerText').onclick=async()=>{const t=$('scannerText').value;if(!t)return toast('ยังไม่มีข้อความ');try{await navigator.clipboard.writeText(t);toast('คัดลอกข้อความแล้ว')}catch(_){$('scannerText').select();document.execCommand('copy');toast('คัดลอกข้อความแล้ว')}};
 $('clearScannerText').onclick=()=>{$('scannerText').value='';$('scannerRawText').value='';$('scannerPreview').innerHTML='';$('scannerStatus').hidden=true};
-$('showScannerClean').onclick=()=>setScannerMode('clean');
+$('showScannerClean').onclick=()=>{const raw=$('scannerRawText').value;if(raw)$('scannerText').value=mergeScannerBlocks(raw.split(/\n{2,}/));setScannerMode('clean')};
 $('showScannerRaw').onclick=()=>setScannerMode('raw');
 
 function download(obj,name){const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
@@ -1263,27 +1263,35 @@ function scannerWordTokens(text){
 function scannerHasMeaningfulEnglish(text){
   const tokens=scannerWordTokens(text);
   if(!tokens.length)return false;
-  const known=new Set(['a','an','and','are','as','at','be','but','by','can','chapter','core','dark','database','death','do','document','for','from','ghost','good','hello','hp','i','in','is','it','king','level','lord','mission','mp','necropolis','no','not','of','on','or','page','rank','raw','room','skill','soul','spirit','status','system','thank','the','to','up','wake','with','you','your']);
-  const alpha=tokens.join('').length;
-  const sensible=tokens.filter(w=>w.length>=2&&(known.has(w.toLowerCase())||/[aeiouy]/i.test(w))).length;
-  return alpha>=3&&sensible>=Math.max(1,Math.ceil(tokens.length*.5));
+  const known=new Set(['a','an','and','are','as','at','be','but','by','can','chapter','core','dark','database','death','do','document','for','from','ghost','good','hello','hp','i','in','is','it','king','level','lord','mission','mp','necropolis','no','not','of','on','or','page','rank','raw','room','skill','soul','spirit','status','system','thank','the','to','up','wake','with','you','your','arc','canon','quest','item','magic','mana','dragon','demon','lord','class','race','world','master','save','load','game','over']);
+  const valid=tokens.filter(w=>w.length>=2&&(known.has(w.toLowerCase())||(/^[A-Z][a-z]{2,}$/.test(w))||(/[aeiouy]/i.test(w)&&!/^(?:wo|dur|vv|vo)$/i.test(w))));
+  if(tokens.length===1)return valid.length===1;
+  return valid.length>=Math.ceil(tokens.length*.67);
 }
 function scannerLooksLikeStatusHeader(t){
   return /^\d{1,2}:\d{2}\b/.test(t)&&(/(?:จันทร์|อังคาร|พุธ|พฤหัสบดี|ศุกร์|เสาร์|อาทิตย์)/.test(t)||/\b\d{1,3}%\b/.test(t)||/(?:wifi|5g|4g|lte|แบต)/i.test(t));
 }
+function scannerNoiseScore(t){
+  const s=String(t||'').trim();if(!s)return 0;
+  const chars=[...s],letters=(s.match(/[\p{L}]/gu)||[]).length,digits=(s.match(/[\p{N}]/gu)||[]).length;
+  const symbols=(s.match(/[^\p{L}\p{N}\s]/gu)||[]).length,thai=(s.match(/[\u0E00-\u0E7F]/g)||[]).length;
+  const tokens=scannerWordTokens(s);let score=0;
+  if(chars.length&&symbols/chars.length>.22)score+=3;
+  if(chars.length&&digits/chars.length>.35)score+=3;
+  if(letters===0&&symbols+digits>=3)score+=4;
+  if(tokens.length>=3&&!scannerHasMeaningfulEnglish(s)&&thai===0)score+=5;
+  if(/(?:[A-Za-z]\s*){4,}/.test(s))score+=3;
+  if(/[«»£¥€$@©®]{1,}/.test(s))score+=3;
+  if(/(?:^|\s)(?:wo|dur|vv|vo|[a-z])(?:\s|$)/i.test(s)&&thai===0)score+=2;
+  return score;
+}
 function scannerLooksLikeGarbage(t){
   if(!t)return false;
-  if(scannerHasMeaningfulEnglish(t))return false;
-  const letters=(t.match(/[\p{L}]/gu)||[]).length;
-  const symbols=(t.match(/[^\p{L}\p{N}\s]/gu)||[]).length;
-  const latin=(t.match(/[A-Za-z]/g)||[]).length;
-  const thai=(t.match(/[\u0E00-\u0E7F]/g)||[]).length;
-  if(/^o\s*wo\s*=\s*a\s*wo/i.test(t))return true;
+  if(/^o\s*wo\s*=\s*a\s*wo(?:\s*dur\s*a)?/i.test(t))return true;
   if(/^(?:[A-Za-z]\s*){1,3}[=<>«»£¥€$&@%]+/i.test(t))return true;
   if(/^[\d\s@%๐-๙()=<>«»£¥€$&.,:;!?+\-_/\\]{5,}$/.test(t))return true;
-  if(letters===0&&symbols>=2)return true;
-  if(latin>0&&thai===0&&symbols>=2&&latin<8)return true;
-  return false;
+  if(scannerHasMeaningfulEnglish(t))return false;
+  return scannerNoiseScore(t)>=5;
 }
 function isScannerJunkLine(line){
   const t=normalizeScannerLine(line);
@@ -1302,13 +1310,11 @@ function scannerComparable(text){
 }
 function scannerSimilarity(a,b){
   const x=scannerComparable(a),y=scannerComparable(b);
-  if(!x||!y)return 0;
-  if(x===y)return 1;
+  if(!x||!y)return 0;if(x===y)return 1;
   const short=x.length<y.length?x:y,long=x.length<y.length?y:x;
-  if(long.includes(short)&&short.length/long.length>.88)return short.length/long.length;
+  if(long.includes(short)&&short.length/long.length>.82)return short.length/long.length;
   const grams=s=>{const out=new Set();for(let i=0;i<s.length-2;i++)out.add(s.slice(i,i+3));return out};
-  const A=grams(x),B=grams(y);if(!A.size||!B.size)return 0;
-  let hit=0;for(const g of A)if(B.has(g))hit++;
+  const A=grams(x),B=grams(y);if(!A.size||!B.size)return 0;let hit=0;for(const g of A)if(B.has(g))hit++;
   return (2*hit)/(A.size+B.size);
 }
 function dedupeScannerLines(lines){
@@ -1317,8 +1323,8 @@ function dedupeScannerLines(lines){
     const line=normalizeScannerLine(raw);
     if(!line){if(out.length&&out[out.length-1]!=='')out.push('');continue}
     if(isScannerJunkLine(line))continue;
-    const recent=out.slice(-12).filter(Boolean);
-    if(recent.some(x=>scannerSimilarity(x,line)>.965))continue;
+    const recent=out.slice(-20).filter(Boolean);
+    if(recent.some(x=>scannerSimilarity(x,line)>.94))continue;
     out.push(line);
   }
   return out;
@@ -1326,45 +1332,44 @@ function dedupeScannerLines(lines){
 function dedupeScannerParagraphs(paras){
   const out=[];
   for(const p of paras){
-    const text=normalizeScannerLine(p.replace(/\n/g,' '));
-    if(!text)continue;
-    const duplicate=out.some(prev=>scannerSimilarity(prev,text)>.94);
-    if(!duplicate)out.push(p.trim());
+    const text=normalizeScannerLine(p.replace(/\n/g,' '));if(!text)continue;
+    if(out.some(prev=>scannerSimilarity(prev,text)>.90))continue;
+    out.push(p.trim());
   }
   return out;
 }
 function mergeScannerBlocks(blocks){
   const clean=[];
   for(const block of blocks){
-    const text=cleanScannerText(block);
-    if(!text)continue;
+    const text=cleanScannerText(block);if(!text)continue;
     if(!clean.length){clean.push(text);continue}
-    const prev=clean[clean.length-1];
-    const a=prev.split('\n').filter(Boolean),b=text.split('\n').filter(Boolean);
-    let overlap=0,max=Math.min(12,a.length,b.length);
+    const prev=clean[clean.length-1],a=prev.split('\n').filter(Boolean),b=text.split('\n').filter(Boolean);
+    let overlap=0,max=Math.min(18,a.length,b.length);
     for(let n=max;n>=1;n--){
-      const tail=a.slice(-n).map(scannerComparable).join('|');
-      const head=b.slice(0,n).map(scannerComparable).join('|');
-      if(tail&&tail===head){overlap=n;break}
+      const tail=a.slice(-n).map(scannerComparable).join('|'),head=b.slice(0,n).map(scannerComparable).join('|');
+      if(tail&&head&&scannerSimilarity(tail,head)>.96){overlap=n;break}
     }
-    if(overlap){clean[clean.length-1]=[...a,...b.slice(overlap)].join('\n')}
-    else if(scannerSimilarity(prev,text)<.94)clean.push(text);
+    if(overlap)clean[clean.length-1]=[...a,...b.slice(overlap)].join('\n');
+    else if(scannerSimilarity(prev,text)<.90)clean.push(text);
   }
   return dedupeScannerParagraphs(clean.join('\n\n').split(/\n{2,}/)).join('\n\n');
 }
 function cleanScannerInlineNoise(text){
-  return String(text||'')
-    // ขยะ OCR ที่มักติดอยู่กลางบรรทัด ไม่ใช่เฉพาะทั้งบรรทัด
-    .replace(/\bo\s*wo\s*=\s*a\s*wo\s*dur\s*a\b/gi,' ')
-    .replace(/(?:^|\s)[@©®]?[\s]*(?:\d{1,3}%|[๐-๙]{1,3}%)(?:\s*[()๐-๙A-Za-z@©®=:+-]*)?(?=\s|$)/g,' ')
-    .replace(/(?:^|\s)(?:[๐-๙0-9]{1,3}\s+){3,}[A-Za-z]?\s*(?=\s|$)/g,' ')
-    .replace(/(?:^|\s)[A-Za-z]?(?:\s*[«»£¥€$&@=<>]){1,}[^\p{L}\n]{0,18}(?=\s|$)/gu,' ')
-    .replace(/\b(?:writer\.dek-d\.com|dek-d\.com|maxsukung\.github\.io)\b/gi,' ')
-    .replace(/(?:^|\s)\d{1,2}\s+(?:ม\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.|ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.)\s*\d{2,4}\s*[-–—]\s*[\d.]+K?\s*ตัวอักษร(?:\s*\([^)]*\))?/gi,' ')
-    .replace(/ลำดับตอนที่\s*#?\s*\d+\s*[:：]\s*/gi,' ')
-    .replace(/\s+([,.!?;:…])/g,'$1')
-    .replace(/[ \t]{2,}/g,' ')
-    .trim();
+  let s=String(text||'');
+  const junk=[
+    /\bo\s*wo\s*=\s*a\s*wo(?:\s*dur\s*a)?\b/gi,
+    /(?:^|\s)[@©®]?\s*(?:\d{1,3}%|[๐-๙]{1,3}%)(?:\s*[()๐-๙A-Za-z@©®=:+-]*)?(?=\s|$)/g,
+    /(?:^|\s)(?:[๐-๙0-9]{1,3}\s+){3,}[A-Za-z]?\s*(?=\s|$)/g,
+    /(?:^|\s)["']?\d?\s*[«»£¥€$&@=<>]+(?:\s*[A-Za-z0-9๐-๙.,:+-]+){0,8}(?=\s|$)/gu,
+    /\b(?:writer\.dek-d\.com|dek-d\.com|maxsukung\.github\.io)\b/gi,
+    /(?:^|\s)\d{1,2}\s+(?:ม\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.|ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.)\s*\d{2,4}\s*[-–—]\s*[\d.]+K?\s*ตัวอักษร(?:\s*\([^)]*\))?/gi,
+    /ลำดับตอนที่\s*#?\s*\d+\s*[:：]\s*/gi,
+    /(?:^|\s)(?:\d+[A-Za-z]?\s*){3,}(?=\s|$)/g
+  ];
+  for(const re of junk)s=s.replace(re,' ');
+  // ตัดช่วงละตินขยะที่คั่นอยู่ระหว่างข้อความไทย แต่รักษาวลีอังกฤษที่มีความหมาย
+  s=s.replace(/(^|[\u0E00-\u0E7F]\s+)([A-Za-z][A-Za-z\s=<>«»£¥€$&@%0-9]{5,})(?=\s+[\u0E00-\u0E7F]|$)/g,(m,a,b)=>scannerHasMeaningfulEnglish(b)?m:a);
+  return s.replace(/\s+([,.!?;:…])/g,'$1').replace(/[ \t]{2,}/g,' ').trim();
 }
 function cleanScannerText(raw){
   let text=repairThaiText(String(raw||''))
@@ -1379,7 +1384,7 @@ function cleanScannerText(raw){
   for(const line of lines){
     if(!line){flush();continue}
     if(/^[-—–_─]{3,}$/.test(line)){flush();if(paras[paras.length-1]!=='──────────')paras.push('──────────');continue}
-    const isHeading=/^(?:บทที่|ตอนที่|ลำดับตอนที่|ภาคที่|ตลาดชะตาฟ้า)\b/i.test(line);
+    const isHeading=/^(?:บทที่|ตอนที่|ภาคที่|ตลาดชะตาฟ้า)\b/i.test(line);
     const isDialogue=/^[“"'‘]/.test(line)||/[”"'’]$/.test(line);
     const isShortBeat=line.length<=45&&/(?:กล่าว|ถาม|ตอบ|ตะโกน|กระซิบ|พึมพำ|ถอนหายใจ|หลับตา|ลืมตา|เงียบ|นิ่ง)$/.test(line);
     if(isHeading||isDialogue||isShortBeat){flush();paras.push(line);continue}
@@ -1428,7 +1433,7 @@ async function handleScannerFiles(files){
   status.textContent=`อ่านเสร็จแล้ว ${ordered.length} ไฟล์ · ทำความสะอาดหัว–ท้ายและรวมข้อความซ้ำแล้ว`;
 }
 
-const APP_VERSION='41';
+const APP_VERSION='43';
 let updateReloading=false,lastSeenVersion=APP_VERSION;
 async function checkForAppUpdate(registration){
   try{
