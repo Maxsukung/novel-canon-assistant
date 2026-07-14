@@ -639,6 +639,49 @@ function findExistingCharacterForName(name,p){
   }
   return null
 }
+
+const CANONICAL_CHARACTER_IDENTITIES=[
+  {name:'อนันต์ วงศ์สุริยัน',aliases:['อนันต์','อนันต์วงศ์สุริยัน']},
+  {name:'สม วงศ์สุริยัน',aliases:['สม','สมวงศ์สุริยัน']},
+  {name:'เวหัสดิน อัครปักษา',aliases:['เวหัสดิน','เวหัสดินอัครปักษา','ชายปีกทอง']},
+  {name:'สินธุ',aliases:['ลูกกิเลน']}
+];
+function canonicalIdentityForName(value=''){
+  const clean=sanitizeCharacterIdentityName(repairThaiText(String(value||''))).trim();
+  const key=normalizedName(clean);
+  if(!key)return null;
+  for(const row of CANONICAL_CHARACTER_IDENTITIES){
+    const keys=[row.name,...row.aliases].map(normalizedName);
+    if(keys.includes(key))return row;
+    // Old versions sometimes appended sentence fragments to a valid identity.
+    if(keys.some(k=>key.startsWith(k)&&key.length-k.length<=36))return row;
+  }
+  return null;
+}
+function enforceCanonicalCharacterIdentities(p){
+  if(!p)return {merged:0,renamed:0,candidates:0};
+  let merged=0,renamed=0,candidates=0;
+  p.characters=p.characters||[];
+  for(const identity of CANONICAL_CHARACTER_IDENTITIES){
+    const matches=p.characters.filter(c=>canonicalIdentityForName(c.name)?.name===identity.name || (c.aliases||[]).some(a=>canonicalIdentityForName(a)?.name===identity.name));
+    if(!matches.length)continue;
+    matches.sort((a,b)=>characterRecordRichness(b)-characterRecordRichness(a));
+    const target=matches[0];
+    const oldName=target.name;
+    for(const other of matches.slice(1)){mergeCharacterRecordInto(target,other);merged++}
+    target.name=identity.name;
+    target.aliases=uniqueTextValues([...(target.aliases||[]),oldName,...identity.aliases].filter(x=>normalizedName(x)!==normalizedName(identity.name)&&!looksLikeSentenceFragmentName(x)));
+    target.updatedAt=now();
+    if(normalizedName(oldName)!==normalizedName(identity.name))renamed++;
+    const removeIds=new Set(matches.slice(1).map(x=>x.id));
+    p.characters=p.characters.filter(c=>!removeIds.has(c.id));
+  }
+  const before=(p.characterCandidates||[]).length;
+  p.characterCandidates=(p.characterCandidates||[]).filter(c=>!canonicalIdentityForName(c.name)&&!findExistingCharacterForName(c.name,p));
+  candidates=before-p.characterCandidates.length;
+  return {merged,renamed,candidates};
+}
+
 function uniqueTextValues(values){const seen=new Set(),out=[];for(const value of values||[]){const clean=repairThaiText(String(value||'')).replace(/\s+/g,' ').trim();const key=normalizedName(clean);if(clean&&!seen.has(key)){seen.add(key);out.push(clean)}}return out}
 function looksLikeSentenceFragmentName(value=''){
   const n=repairThaiText(String(value||'')).replace(/\s+/g,' ').trim();
@@ -739,7 +782,7 @@ function inferDescriptorAliases(p){
   }
   return changed
 }
-function reconcileCharacterIdentity(p){for(const c of p.characters||[]){const clean=sanitizeCharacterIdentityName(c.name);if(clean&&clean!==c.name){c.aliases=uniqueTextValues([...(c.aliases||[]),c.name].filter(x=>!looksLikeSentenceFragmentName(x)));c.name=clean}}const mergedBefore=mergeDuplicateCharacters(p);const full=inferFullNamesFromNovel(p);const descriptors=inferDescriptorAliases(p);const mergedAfter=mergeDuplicateCharacters(p);return {merged:mergedBefore+mergedAfter,full,descriptors}}
+function reconcileCharacterIdentity(p){for(const c of p.characters||[]){const clean=sanitizeCharacterIdentityName(c.name);if(clean&&clean!==c.name){c.aliases=uniqueTextValues([...(c.aliases||[]),c.name].filter(x=>!looksLikeSentenceFragmentName(x)));c.name=clean}}const forcedBefore=enforceCanonicalCharacterIdentities(p);const mergedBefore=mergeDuplicateCharacters(p);const full=inferFullNamesFromNovel(p);const descriptors=inferDescriptorAliases(p);const forcedAfter=enforceCanonicalCharacterIdentities(p);const mergedAfter=mergeDuplicateCharacters(p);return {merged:forcedBefore.merged+mergedBefore+forcedAfter.merged+mergedAfter,full:full+forcedBefore.renamed+forcedAfter.renamed,descriptors,candidates:forcedBefore.candidates+forcedAfter.candidates}}
 function stripCandidateAction(value){let n=String(value||'').trim();let changed=true;while(changed){changed=false;for(const v of [...THAI_ACTION_SUFFIXES].sort((a,b)=>b.length-a.length)){if(n.endsWith(v)&&n.length>v.length+1){n=n.slice(0,-v.length).trim();changed=true;break}}}return n}
 function cleanCandidateName(value){let n=repairExtractedThaiName(String(value||'')).replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/^[“”"'‘’\s—–-]+|[“”"'‘’.,!?…:;\s—–-]+$/g,'').replace(/\s+/g,' ').trim();n=stripCandidateAction(n);n=n.replace(/^(?:นาย|นาง|นางสาว|เด็กชาย|เด็กหญิง|เจ้าหญิง|เจ้าชาย|องค์|พญา|ฤๅษี|หลวงตา|ท่าน)\s*/,'').trim();return n}
 function isKnownOrEmbeddedCharacter(name,p){const clean=cleanCandidateName(name),key=normalizedName(clean);if(!key)return true;if(findExistingCharacterForName(clean,p))return true;for(const known of knownCharacterNames(p)){const k=normalizedName(known);if(!k)continue;if(key===k)return true;if(key.startsWith(k)&&key.length-k.length<=12&&THAI_ACTION_SUFFIXES.some(v=>key===k+normalizedName(v)))return true;if(k.startsWith(key)&&k.length-key.length<=18)return true}return false}
@@ -774,7 +817,7 @@ function discoverCharacterCandidates(p){
   }
   return out.sort((a,b)=>b.confidence-a.confidence||b.chapterIds.length-a.chapterIds.length||b.count-a.count).slice(0,12)
 }
-async function scanNovelCharacters(){if(!ensureProject())return;const p=project();p.characterCandidates=[];const reconciled=reconcileCharacterIdentity(p);const found=discoverCharacterCandidates(p).filter(c=>!findExistingCharacterForName(c.name,p)&&!DESCRIPTOR_HINTS.includes(c.name));p.characterCandidates=found;activity('character',`วิเคราะห์ตัวละครจากนิยาย: รวมซ้ำ ${reconciled.merged} · เติมชื่อเต็ม ${reconciled.full} · เชื่อมชื่อเรียก ${reconciled.descriptors} · รอตรวจ ${found.length} (V33)`);await save();toast(`จัดระเบียบตัวละครแล้ว: รวม ${reconciled.merged} · ชื่อเต็ม ${reconciled.full} · ชื่อเรียก ${reconciled.descriptors} · รอตรวจ ${found.length}`)}
+async function scanNovelCharacters(){if(!ensureProject())return;const p=project();p.characterCandidates=[];const reconciled=reconcileCharacterIdentity(p);const found=discoverCharacterCandidates(p).filter(c=>!canonicalIdentityForName(c.name)&&!findExistingCharacterForName(c.name,p)&&!DESCRIPTOR_HINTS.includes(c.name)&&!/^(?:ชายผู้|หญิงผู้|ชายคน|หญิงคน|หญิงสาวจาก|ชายจาก|หญิงจาก)/.test(c.name));p.characterCandidates=found;activity('character',`วิเคราะห์ตัวละครจากนิยาย: รวมซ้ำ ${reconciled.merged} · เติมชื่อเต็ม ${reconciled.full} · เชื่อมชื่อเรียก ${reconciled.descriptors} · ตัดรายการเดิม ${reconciled.candidates||0} · รอตรวจ ${found.length} (V34)`);await save();toast(`V34 จัดระเบียบแล้ว: รวม ${reconciled.merged} · ชื่อเต็ม ${reconciled.full} · ชื่อเรียก ${reconciled.descriptors} · รอตรวจ ${found.length}`)}
 async function acceptCharacterCandidate(id){const p=project(),c=(p.characterCandidates||[]).find(x=>x.id===id);if(!c)return;if(!isKnownOrEmbeddedCharacter(c.name,p))p.characters.push({id:uid(),name:c.name,status:'ไม่ทราบ',role:'พบจากเนื้อหานิยาย',aliases:[],facts:`พบใน ${c.chapterTitles.length} ตอน รวม ${c.count} ครั้ง`,limits:'',structured:{'ปรากฏครั้งแรก':c.chapterTitles[0]||'','หลักฐานการสกัด':`${(c.kinds||[]).join(', ')} · กริยาที่พบ ${(c.verbs||[]).join(', ')}`},source:'สกัดจากเนื้อหานิยาย',autoExtractedFromNovel:true,updatedAt:now()});p.characterCandidates=p.characterCandidates.filter(x=>x.id!==id);await save();toast(`เพิ่ม ${c.name} เป็นตัวละครแล้ว`)}
 async function ignoreCharacterCandidate(id){const p=project(),c=(p.characterCandidates||[]).find(x=>x.id===id);if(!c)return;p.ignoredCharacterNames=[...new Set([...(p.ignoredCharacterNames||[]),c.name])];p.characterCandidates=p.characterCandidates.filter(x=>x.id!==id);await save();toast(`ซ่อน ${c.name} แล้ว`)}
 async function clearCharacterCandidates(saveAsIgnored=false){const p=project();if(!p)return;const items=p.characterCandidates||[];if(saveAsIgnored)p.ignoredCharacterNames=[...new Set([...(p.ignoredCharacterNames||[]),...items.map(x=>x.name)])];p.characterCandidates=[];await save();renderCharacterCandidates(p);toast(saveAsIgnored?'ปฏิเสธรายการรอตรวจทั้งหมดแล้ว':'ล้างรายการรอตรวจทั้งหมดแล้ว')}
@@ -1150,7 +1193,7 @@ $('exportBackup').onclick=()=>download(state,`novel-studio-backup-${new Date().t
 $('importBackup').onchange=async e=>{try{const x=JSON.parse(await e.target.files[0].text());if(!Array.isArray(x.projects))throw new Error('รูปแบบไฟล์ไม่ถูกต้อง');state={version:x.version||1,projects:x.projects.map(normalizeProject),activeProjectId:x.activeProjectId||x.projects[0]?.id||null};await save();toast('กู้คืนข้อมูลแล้ว')}catch(err){toast(err.message||'นำเข้าไม่สำเร็จ')}e.target.value=''};
 $('deleteProject').onclick=async()=>{if(!ensureProject())return;if(confirm(`ลบโปรเจกต์ “${project().name}” หรือไม่?`)){state.projects=state.projects.filter(x=>x.id!==state.activeProjectId);state.activeProjectId=state.projects[0]?.id||null;await save();toast('ลบโปรเจกต์แล้ว')}};$('clearAll').onclick=async()=>{if(confirm('ล้างข้อมูลทุกโปรเจกต์หรือไม่? การกระทำนี้ย้อนกลับไม่ได้')){state={version:1,projects:[],activeProjectId:null};await save();toast('ล้างข้อมูลแล้ว')}};
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('installBtn').hidden=false});$('installBtn').onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$('installBtn').hidden=true}};
-const APP_VERSION='33';
+const APP_VERSION='34';
 let updateReloading=false,lastSeenVersion=APP_VERSION;
 async function checkForAppUpdate(registration){
   try{
@@ -1171,4 +1214,4 @@ if('serviceWorker' in navigator){
 }
 
 history.scrollRestoration='manual';
-(async()=>{window.scrollTo(0,0);const loaded=await getDB();if(loaded){state={version:loaded.version||1,projects:(loaded.projects||[]).map(normalizeProject),activeProjectId:loaded.activeProjectId||loaded.projects?.[0]?.id||null}}renderAll();updateEditorStats()})();
+(async()=>{window.scrollTo(0,0);const loaded=await getDB();if(loaded){state={version:loaded.version||1,projects:(loaded.projects||[]).map(normalizeProject),activeProjectId:loaded.activeProjectId||loaded.projects?.[0]?.id||null}}for(const p of state.projects||[])reconcileCharacterIdentity(p);const vb=document.getElementById('appVersionBadge');if(vb)vb.textContent=`V${APP_VERSION}`;renderAll();updateEditorStats();if(loaded)await save()})();
