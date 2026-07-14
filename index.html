@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Novel Studio">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=35">
+<link rel="stylesheet" href="styles.css?v=36">
 <title>Novel Studio</title>
 </head>
 <body>
@@ -143,29 +143,8 @@
 <div id="modal" class="modal" hidden><div class="modal-backdrop" data-close></div><div class="modal-card"><div class="modal-head"><h3 id="modalTitle"></h3><button data-close>×</button></div><div id="modalBody"></div></div></div>
 <div id="toast"></div>
 
-<script>
-(function(){
-  function sidebar(){ return document.querySelector('.sidebar'); }
-  function overlay(){ return document.getElementById('sidebarOverlay'); }
-  window.toggleNovelMenu=function(){
-    var s=sidebar(); if(!s) return;
-    var opened=s.classList.toggle('open');
-    var o=overlay(); if(o) o.classList.toggle('show', opened);
-  };
-  window.closeNovelMenu=function(){
-    var s=sidebar(); if(s) s.classList.remove('open');
-    var o=overlay(); if(o) o.classList.remove('show');
-  };
-  document.addEventListener('DOMContentLoaded', function(){
-    var b=document.getElementById('menuBtn');
-    if(b){
-      b.addEventListener('touchend', function(e){ e.preventDefault(); window.toggleNovelMenu(); }, {passive:false});
-    }
-    document.querySelectorAll('#nav button').forEach(function(x){ x.addEventListener('click', window.closeNovelMenu); });
-  });
-})();
-</script>
+
 <script src="mammoth.browser.min.js"></script>
-<script type="module" src="app.js?v=35"></script>
+<script type="module" src="app.js?v=36"></script>
 </body>
 </html>

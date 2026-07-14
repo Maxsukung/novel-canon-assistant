@@ -235,9 +235,18 @@ html,body{max-width:100%;overflow-x:hidden}
 /* V35 mobile navigation reliability */
 .sidebar{position:relative}
 .sidebar-close-btn{display:none;position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;width:42px;height:42px;padding:0;border-radius:12px;border:1px solid #334155;background:#1f2937;color:#fff;font-size:30px;line-height:1;z-index:3}
-body.menu-open{overflow:hidden;touch-action:none}
+html.menu-open,body.menu-open{overflow:hidden!important;overscroll-behavior:none;touch-action:none}
 @media(max-width:900px){
  .sidebar-close-btn{display:grid;place-items:center}
  .sidebar{padding-top:calc(68px + env(safe-area-inset-top))!important;box-shadow:18px 0 45px rgba(15,23,42,.28)}
  .sidebar-overlay{cursor:pointer;-webkit-tap-highlight-color:transparent}
+}
+
+/* V36 — iPad drawer hardening */
+@media(max-width:900px){
+ .sidebar{top:0!important;bottom:0!important;height:100dvh!important;transform:translateX(-105%);left:0!important;transition:transform .22s ease!important;will-change:transform;visibility:hidden;pointer-events:none}
+ .sidebar.open{transform:translateX(0)!important;visibility:visible;pointer-events:auto}
+ .sidebar-overlay{display:block!important;visibility:hidden;opacity:0;pointer-events:none;touch-action:none;z-index:999!important}
+ .sidebar-overlay.show{visibility:visible;opacity:1;pointer-events:auto}
+ .sidebar-close-btn{display:grid!important;place-items:center!important;touch-action:manipulation}
 }

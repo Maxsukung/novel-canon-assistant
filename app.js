@@ -1106,21 +1106,28 @@ function renderDNA(p){const d=p?.dna;if(!d){$('dnaStats').innerHTML=[['เอก
 function setSidebarOpen(open){
   const side=$('.sidebar'),over=$('sidebarOverlay');
   if(!side)return;
-  side.classList.toggle('open',!!open);
-  if(over)over.classList.toggle('show',!!open);
-  document.body.classList.toggle('menu-open',!!open);
-  const btn=$('menuBtn');if(btn)btn.setAttribute('aria-expanded',open?'true':'false');
+  const shouldOpen=innerWidth<901&&!!open;
+  side.classList.toggle('open',shouldOpen);
+  side.setAttribute('aria-hidden',shouldOpen?'false':'true');
+  if(over){over.classList.toggle('show',shouldOpen);over.setAttribute('aria-hidden',shouldOpen?'false':'true')}
+  document.documentElement.classList.toggle('menu-open',shouldOpen);
+  document.body.classList.toggle('menu-open',shouldOpen);
+  const btn=$('menuBtn');if(btn)btn.setAttribute('aria-expanded',shouldOpen?'true':'false');
 }
 window.toggleNovelMenu=()=>setSidebarOpen(!$('.sidebar')?.classList.contains('open'));
 window.closeNovelMenu=()=>setSidebarOpen(false);
-$('menuBtn').onclick=()=>window.toggleNovelMenu();
-$('sidebarCloseBtn').onclick=()=>window.closeNovelMenu();
-$('sidebarOverlay').onclick=()=>window.closeNovelMenu();
+const menuBtn=$('menuBtn'),closeBtn=$('sidebarCloseBtn'),menuOverlay=$('sidebarOverlay'),sidebarEl=$('.sidebar');
+menuBtn?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();window.toggleNovelMenu()});
+closeBtn?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();window.closeNovelMenu()});
+['pointerdown','touchstart','click'].forEach(type=>menuOverlay?.addEventListener(type,e=>{e.preventDefault();e.stopPropagation();window.closeNovelMenu()},{passive:false}));
 document.addEventListener('keydown',e=>{if(e.key==='Escape')window.closeNovelMenu()});
-document.querySelector('.main')?.addEventListener('pointerdown',()=>{if(innerWidth<901&&$('.sidebar')?.classList.contains('open'))window.closeNovelMenu()});
+document.addEventListener('pointerdown',e=>{if(innerWidth>=901||!sidebarEl?.classList.contains('open'))return;if(sidebarEl.contains(e.target)||menuBtn?.contains(e.target))return;window.closeNovelMenu()},{capture:true});
+document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>window.closeNovelMenu()));
 let menuTouchStartX=null;
-$('.sidebar')?.addEventListener('touchstart',e=>{menuTouchStartX=e.touches?.[0]?.clientX??null},{passive:true});
-$('.sidebar')?.addEventListener('touchend',e=>{if(menuTouchStartX==null)return;const x=e.changedTouches?.[0]?.clientX??menuTouchStartX;if(menuTouchStartX-x>55)window.closeNovelMenu();menuTouchStartX=null},{passive:true});
+sidebarEl?.addEventListener('touchstart',e=>{menuTouchStartX=e.touches?.[0]?.clientX??null},{passive:true});
+sidebarEl?.addEventListener('touchend',e=>{if(menuTouchStartX==null)return;const x=e.changedTouches?.[0]?.clientX??menuTouchStartX;if(menuTouchStartX-x>45)window.closeNovelMenu();menuTouchStartX=null},{passive:true});
+window.addEventListener('resize',()=>{if(innerWidth>=901)window.closeNovelMenu()});
+window.addEventListener('pageshow',()=>window.closeNovelMenu());
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>switchView(b.dataset.go));
 $('newProjectBtn').onclick=createProjectModal;$('activeProjectSelect').onchange=async e=>{state.activeProjectId=e.target.value;currentChapterId=null;currentChapterSource='manual';$('chapterTitle').value='';$('chapterText').value='';await save()};
 $('openCanonModal').onclick=()=>canonModal();$('openCharacterModal').onclick=()=>characterModal();$('openTimelineModal').onclick=()=>timelineModal();
