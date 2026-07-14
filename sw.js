@@ -1,4 +1,4 @@
-const CACHE='novel-studio-v34-auto-update';
+const CACHE='novel-studio-v35-auto-update';
 const CORE=['./','./index.html','./styles.css?v=34','./app.js?v=34','./manifest.webmanifest','./icon-192.png','./icon-512.png','./mammoth.browser.min.js','./pdf.legacy.min.mjs','./pdf.legacy.worker.min.mjs'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(CORE)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));

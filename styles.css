@@ -231,3 +231,13 @@ html,body{max-width:100%;overflow-x:hidden}
 .candidate-bulk-actions{display:flex;gap:12px;justify-content:flex-end;margin:14px 0 18px;flex-wrap:wrap}.candidate-bulk-actions button{min-height:44px}
 
 .brand-title-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.version-badge{display:inline-flex;align-items:center;justify-content:center;padding:3px 9px;border-radius:999px;background:#ede9fe;color:#5b3df5;font-size:12px;font-weight:800;line-height:1.2;border:1px solid #ddd6fe}
+
+/* V35 mobile navigation reliability */
+.sidebar{position:relative}
+.sidebar-close-btn{display:none;position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;width:42px;height:42px;padding:0;border-radius:12px;border:1px solid #334155;background:#1f2937;color:#fff;font-size:30px;line-height:1;z-index:3}
+body.menu-open{overflow:hidden;touch-action:none}
+@media(max-width:900px){
+ .sidebar-close-btn{display:grid;place-items:center}
+ .sidebar{padding-top:calc(68px + env(safe-area-inset-top))!important;box-shadow:18px 0 45px rgba(15,23,42,.28)}
+ .sidebar-overlay{cursor:pointer;-webkit-tap-highlight-color:transparent}
+}
