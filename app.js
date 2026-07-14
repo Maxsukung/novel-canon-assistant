@@ -412,16 +412,82 @@ function buildCharacterFromPart(name,block,sourceName){
   const connected=sectionText(block,'ข้อมูลเชื่อมจักรวาล');if(/ห้าม|ต้องไม่|CANON/i.test(connected))limits.push(`ข้อมูลเชื่อมจักรวาล: ${connected}`);
   const structured={};if(species)structured['เผ่าพันธุ์']=species;if(age)structured['อายุ']=age;if(role)structured['บทบาท']=role;if(status)structured['สถานะ']=status;for(const label of ['วิถีหลัก','พรสวรรค์','บ้านเกิด','บ้านปัจจุบัน','เปิดตัว','Arc เด่น']){const v=fields[normalizeLabel(label)];if(v)structured[label]=v}for(const sec of CHARACTER_SECTIONS){const v=sectionText(block,sec);if(v&&v.length>2)structured[sec]=v}return {name:cleanCharacterName(actualName),aliases:[...new Set(aliases.map(cleanCharacterName).filter(Boolean))],role:[role,species].filter(Boolean).join(' · '),status:normalizeStatus(status),facts:keyFacts.join('\n'),limits:limits.join('\n'),structured,source:sourceName,autoExtracted:true,fieldCount:Object.keys(fields).length};
 }
-function parsePartDatabase(text,sourceName){
-  const t=cleanPdfText(text).replace(/\s+(?=PART\s*\d{1,3}\s*[:：])/gi,'\n');
-  const re=/PART\s*(\d{1,3})\s*[:：]\s*([^\n]{2,120})/gi;const matches=[...t.matchAll(re)];const out=[];
-  for(let i=0;i<matches.length;i++){
-    const m=matches[i],name=cleanCharacterName(m[2].replace(/[━═─].*$/,'').trim());
-    const block=t.slice(m.index+m[0].length,i+1<matches.length?matches[i+1].index:t.length);
-    const item=buildCharacterFromPart(name,block,sourceName);
-    if(item.name&&item.fieldCount>=2)out.push(item);
+function repairExtractedThaiName(value){
+  let s=repairThaiText(String(value||''))
+    .replace(/[|•●▪■□�]+/g,' ')
+    .replace(/\[(?:CANON|LOCKED|INFERRED|CHAT)[^\]]*\]/gi,' ')
+    .replace(/[━═─]+/g,' ')
+    .replace(/\s+/g,' ').trim();
+  // PDF text layers often place combining marks after a space. Join only Thai clusters.
+  s=s.replace(/([\u0E01-\u0E2E])\s+([\u0E31\u0E34-\u0E3A\u0E47-\u0E4E])/g,'$1$2')
+     .replace(/([\u0E31\u0E34-\u0E3A\u0E47-\u0E4E])\s+([\u0E01-\u0E2E])/g,'$1$2')
+     .replace(/\s+/g,' ').trim();
+  return cleanCharacterName(s);
+}
+function firstCharacterNameFromBlock(block,headingName=''){
+  const raw=String(block||'').replace(/\r/g,'\n');
+  const lines=raw.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  // Prefer the explicit ชื่อ field because the PART heading is frequently corrupted by PDF glyph order.
+  for(let i=0;i<Math.min(lines.length,45);i++){
+    const compact=normalizeLabel(lines[i]);
+    if(compact==='ชื่อ'||compact==='ชื่อจริง'||compact==='ชื่อตัวละคร'||compact==='name'||compact==='charactername'){
+      for(let j=i+1;j<Math.min(lines.length,i+9);j++){
+        const candidate=repairExtractedThaiName(lines[j]);
+        if(candidate && !/^\[/.test(lines[j]) && !isKnownField(candidate) && candidate.length>=2 && candidate.length<=80)return candidate;
+      }
+    }
+    const inline=lines[i].match(/^(?:ชื่อ|ชื่อจริง|ชื่อตัวละคร|name|character name)\s*[:：]\s*(.+)$/i);
+    if(inline){const candidate=repairExtractedThaiName(inline[1]);if(candidate)return candidate}
   }
-  return out;
+  return repairExtractedThaiName(headingName);
+}
+function canonicalPartName(sourceName,partNumber,rawName){
+  const n=String(sourceName||'').toUpperCase();
+  // SHP_08A's PDF text layer scrambles Thai glyph order. PART numbers are stable,
+  // so use the database's canonical index as a repair fallback for this known file.
+  if(/SHP[_-]?08A/.test(n)){
+    const map={
+      1:'อนันต์ วงศ์สุริยัน',
+      2:'มยุรี หิมพานต์กานต์',
+      3:'สุบรรณ เวหาวายุ',
+      4:'อนันตนาคราช ศรีบาดาล',
+      5:'ฤๅษีสุเมธ ญาณคีรี',
+      6:'ราหู ไร้นาม',
+      7:'กัลยา อัคนีภูต',
+      8:'สินธุ'
+    };
+    if(map[partNumber])return map[partNumber];
+  }
+  return repairExtractedThaiName(rawName);
+}
+function parsePartDatabase(text,sourceName){
+  const raw=String(text||'').replace(/\r/g,'\n').replace(/\f/g,'\n');
+  // Do not require PART to begin on a new line. PDF.js may concatenate the separator,
+  // PART marker and preceding text into one visual line on iPad/Safari.
+  const re=/\bPART\s*(\d{1,3})\s*[:：]?\s*/gi;
+  const matches=[...raw.matchAll(re)],out=[];
+  for(let i=0;i<matches.length;i++){
+    const m=matches[i];
+    const blockStart=m.index+m[0].length;
+    const blockEnd=i+1<matches.length?matches[i+1].index:raw.length;
+    const fullPart=raw.slice(blockStart,blockEnd);
+    // Heading is everything before the first long separator / known section heading.
+    const headingRaw=fullPart.split(/\n|[━═─]{3,}|ข้อมูล\s*พื้นฐาน|ข\s*้อมูล\s*พ\s*ื้น\s*ฐาน/i)[0]||'';
+    const explicitName=firstCharacterNameFromBlock(fullPart,headingRaw);
+    const partNumber=Number(m[1]);
+    const name=canonicalPartName(sourceName,partNumber,explicitName||headingRaw);
+    const normalizedBlock=cleanPdfText(fullPart);
+    const item=buildCharacterFromPart(name,normalizedBlock,sourceName);
+    item.name=name||item.name;
+    item.partNumber=partNumber;
+    if(item.name && item.name.length>=2 && item.name.length<=100){
+      if(!item.role)item.role='ไม่ระบุ';
+      if(!item.status)item.status='ไม่ทราบ';
+      out.push(item);
+    }
+  }
+  const seen=new Set();
+  return out.filter(item=>{const k=`${item.partNumber}:${normalizedName(item.name)}`;if(!normalizedName(item.name)||seen.has(k))return false;seen.add(k);return true});
 }
 function parseStatusDatabase(text,sourceName){
   const t=cleanPdfText(text);
@@ -471,10 +537,19 @@ function mergeExtractedCharacters(p,items,doc){
 }
 function extractCharactersFromDocument(p,doc){if(!doc?.text)return {added:0,updated:0,total:0};return mergeExtractedCharacters(p,parseCharactersFromText(doc.text,doc.name),doc)}
 async function extractCharactersFromAllDocuments(){
-  if(!ensureProject())return;const p=project();let added=0,updated=0,found=0,scanned=0;const docs=p.documents.filter(d=>d.text&&String(d.text).trim());
-  for(const doc of docs){scanned++;const r=extractCharactersFromDocument(p,doc);added+=r.added;updated+=r.updated;found+=r.total}
-  const box=$('characterExtractStatus');box.hidden=false;box.textContent=found?`ตรวจ ${scanned} เอกสาร · พบ ${found} รายการ · เพิ่มใหม่ ${added} ตัวละคร · อัปเดต ${updated} รายการ กรุณาตรวจทานข้อมูลที่สกัดอัตโนมัติ`:`ตรวจ ${scanned} เอกสารแล้ว แต่ยังไม่พบโครงสร้าง PART หรือระเบียนตัวละครที่รองรับ`;
-  if(found){activity('character',`สกัดข้อมูลตัวละครจากเอกสาร เพิ่ม ${added} อัปเดต ${updated}`);await save();toast(`พบตัวละคร ${found} รายการ`)}else toast('ยังไม่พบข้อมูลตัวละครที่สกัดได้');
+  if(!ensureProject())return;const p=project();let added=0,updated=0,found=0,scanned=0;const details=[];
+  const docs=p.documents.filter(d=>d.text&&String(d.text).trim()&&(['character','canon'].includes(d.type)||/SHP[_-]?08A?|CHARACTER/i.test(d.name||'')));
+  // Rebuild automatic records on every sync so old failed parses do not remain visible.
+  p.characters=(p.characters||[]).filter(c=>!c.autoExtracted);
+  for(const doc of docs){
+    scanned++;
+    const items=parseCharactersFromText(doc.text,doc.name);
+    details.push(`${doc.name}: ${items.length}`);
+    const r=mergeExtractedCharacters(p,items,doc);added+=r.added;updated+=r.updated;found+=r.total;
+  }
+  const box=$('characterExtractStatus');box.hidden=false;
+  box.textContent=found?`ตรวจ ${scanned} เอกสาร · สกัดได้ ${found} ระเบียน · แสดง ${p.characters.length} ตัวละคร (${details.join(' | ')})`:`ตรวจ ${scanned} เอกสารแล้ว แต่ยังไม่พบระเบียนตัวละคร (${details.join(' | ')||'ไม่มีเอกสารเป้าหมาย'})`;
+  if(found){activity('character',`สร้างดัชนีตัวละครใหม่ ${found} ระเบียน`);await save();toast(`สกัดตัวละครได้ ${found} ระเบียน`)}else{await save();toast('ยังไม่พบข้อมูลตัวละครที่สกัดได้')}
 }
 
 function canonModal(item=null){if(!ensureProject())return;openModal(item?'แก้ไข Canon':'เพิ่ม Canon',`<div class="form-grid"><div class="row2"><input id="mCanonTitle" placeholder="หัวข้อ"><select id="mCanonCategory"><option>ตัวละคร</option><option>ระบบ</option><option>พลัง</option><option>ไทม์ไลน์</option><option>สถานที่</option><option>ไอเทม</option><option>กฎโลก</option><option>อื่น ๆ</option></select></div><textarea id="mCanonRule" placeholder="ข้อความ Canon ที่ล็อกไว้"></textarea><textarea id="mCanonSource" placeholder="แหล่งอ้างอิง เช่น ชื่อไฟล์ > หัวข้อ > หน้า"></textarea><div class="row2"><select id="mCanonPriority"><option value="100">ผู้ใช้ล็อกเอง — สูงสุด</option><option value="80">Canon Database</option><option value="70">Character Bible</option><option value="60">Timeline</option><option value="40">ต้นฉบับตอน</option><option value="20">เอกสารอ้างอิง</option></select><button id="mSaveCanon" class="primary">บันทึก Canon</button></div></div>`,()=>{if(item){$('mCanonTitle').value=item.title;$('mCanonCategory').value=item.category;$('mCanonRule').value=item.rule;$('mCanonSource').value=item.source;$('mCanonPriority').value=String(item.priority||100)}$('mSaveCanon').onclick=async()=>{const rule=$('mCanonRule').value.trim();if(!rule)return toast('กรุณาใส่ข้อความ Canon');const p=project();const data={id:item?.id||uid(),title:$('mCanonTitle').value.trim()||'ไม่ระบุหัวข้อ',category:$('mCanonCategory').value,rule,source:$('mCanonSource').value.trim(),priority:Number($('mCanonPriority').value),locked:true,updatedAt:now()};if(item)Object.assign(p.canon.find(x=>x.id===item.id),data);else p.canon.push(data);activity('canon',`${item?'แก้ไข':'เพิ่ม'} Canon: ${data.title}`);closeModal();await save();toast('บันทึก Canon แล้ว')}})}
