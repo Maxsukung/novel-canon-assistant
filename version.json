@@ -1,5 +1,3 @@
 {
-  "version": "V40",
-  "build": "2026-07-14-android-scroll",
-  "notes": "Android Chrome scrolling compatibility"
+  "version": "41"
 }

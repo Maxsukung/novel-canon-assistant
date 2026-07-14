@@ -844,7 +844,7 @@ function discoverCharacterCandidates(p){
   }
   return out.sort((a,b)=>b.confidence-a.confidence||b.chapterIds.length-a.chapterIds.length||b.count-a.count).slice(0,12)
 }
-async function scanNovelCharacters(){if(!ensureProject())return;const p=project();p.characterCandidates=[];const reconciled=reconcileCharacterIdentity(p);const found=discoverCharacterCandidates(p).filter(c=>!canonicalIdentityForName(c.name)&&!findExistingCharacterForName(c.name,p)&&!DESCRIPTOR_HINTS.includes(c.name)&&!/^(?:ชายผู้|หญิงผู้|ชายคน|หญิงคน|หญิงสาวจาก|ชายจาก|หญิงจาก)/.test(c.name));p.characterCandidates=found;activity('character',`วิเคราะห์ตัวละครจากนิยาย: รวมซ้ำ ${reconciled.merged} · เติมชื่อเต็ม ${reconciled.full} · เชื่อมชื่อเรียก ${reconciled.descriptors} · ตัดรายการเดิม ${reconciled.candidates||0} · รอตรวจ ${found.length} (V40)`);await save();toast(`V40 จัดระเบียบแล้ว: รวม ${reconciled.merged} · ชื่อเต็ม ${reconciled.full} · ชื่อเรียก ${reconciled.descriptors} · รอตรวจ ${found.length}`)}
+async function scanNovelCharacters(){if(!ensureProject())return;const p=project();p.characterCandidates=[];const reconciled=reconcileCharacterIdentity(p);const found=discoverCharacterCandidates(p).filter(c=>!canonicalIdentityForName(c.name)&&!findExistingCharacterForName(c.name,p)&&!DESCRIPTOR_HINTS.includes(c.name)&&!/^(?:ชายผู้|หญิงผู้|ชายคน|หญิงคน|หญิงสาวจาก|ชายจาก|หญิงจาก)/.test(c.name));p.characterCandidates=found;activity('character',`วิเคราะห์ตัวละครจากนิยาย: รวมซ้ำ ${reconciled.merged} · เติมชื่อเต็ม ${reconciled.full} · เชื่อมชื่อเรียก ${reconciled.descriptors} · ตัดรายการเดิม ${reconciled.candidates||0} · รอตรวจ ${found.length} (V41)`);await save();toast(`V41 จัดระเบียบแล้ว: รวม ${reconciled.merged} · ชื่อเต็ม ${reconciled.full} · ชื่อเรียก ${reconciled.descriptors} · รอตรวจ ${found.length}`)}
 async function acceptCharacterCandidate(id){const p=project(),c=(p.characterCandidates||[]).find(x=>x.id===id);if(!c)return;if(!isKnownOrEmbeddedCharacter(c.name,p))p.characters.push({id:uid(),name:c.name,status:'ไม่ทราบ',role:'พบจากเนื้อหานิยาย',aliases:[],facts:`พบใน ${c.chapterTitles.length} ตอน รวม ${c.count} ครั้ง`,limits:'',structured:{'ปรากฏครั้งแรก':c.chapterTitles[0]||'','หลักฐานการสกัด':`${(c.kinds||[]).join(', ')} · กริยาที่พบ ${(c.verbs||[]).join(', ')}`},source:'สกัดจากเนื้อหานิยาย',autoExtractedFromNovel:true,updatedAt:now()});p.characterCandidates=p.characterCandidates.filter(x=>x.id!==id);await save();toast(`เพิ่ม ${c.name} เป็นตัวละครแล้ว`)}
 async function ignoreCharacterCandidate(id){const p=project(),c=(p.characterCandidates||[]).find(x=>x.id===id);if(!c)return;p.ignoredCharacterNames=[...new Set([...(p.ignoredCharacterNames||[]),c.name])];p.characterCandidates=p.characterCandidates.filter(x=>x.id!==id);await save();toast(`ซ่อน ${c.name} แล้ว`)}
 async function clearCharacterCandidates(saveAsIgnored=false){const p=project();if(!p)return;const items=p.characterCandidates||[];if(saveAsIgnored)p.ignoredCharacterNames=[...new Set([...(p.ignoredCharacterNames||[]),...items.map(x=>x.name)])];p.characterCandidates=[];await save();renderCharacterCandidates(p);toast(saveAsIgnored?'ปฏิเสธรายการรอตรวจทั้งหมดแล้ว':'ล้างรายการรอตรวจทั้งหมดแล้ว')}
@@ -1257,32 +1257,79 @@ function normalizeScannerLine(line){
     .replace(/[ \t]+/g,' ')
     .trim();
 }
+function scannerWordTokens(text){
+  return normalizeScannerLine(text).match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g)||[];
+}
+function scannerHasMeaningfulEnglish(text){
+  const tokens=scannerWordTokens(text);
+  if(!tokens.length)return false;
+  const known=new Set(['a','an','and','are','as','at','be','but','by','can','chapter','core','dark','database','death','do','document','for','from','ghost','good','hello','hp','i','in','is','it','king','level','lord','mission','mp','necropolis','no','not','of','on','or','page','rank','raw','room','skill','soul','spirit','status','system','thank','the','to','up','wake','with','you','your']);
+  const alpha=tokens.join('').length;
+  const sensible=tokens.filter(w=>w.length>=2&&(known.has(w.toLowerCase())||/[aeiouy]/i.test(w))).length;
+  return alpha>=3&&sensible>=Math.max(1,Math.ceil(tokens.length*.5));
+}
+function scannerLooksLikeStatusHeader(t){
+  return /^\d{1,2}:\d{2}\b/.test(t)&&(/(?:จันทร์|อังคาร|พุธ|พฤหัสบดี|ศุกร์|เสาร์|อาทิตย์)/.test(t)||/\b\d{1,3}%\b/.test(t)||/(?:wifi|5g|4g|lte|แบต)/i.test(t));
+}
+function scannerLooksLikeGarbage(t){
+  if(!t)return false;
+  if(scannerHasMeaningfulEnglish(t))return false;
+  const letters=(t.match(/[\p{L}]/gu)||[]).length;
+  const symbols=(t.match(/[^\p{L}\p{N}\s]/gu)||[]).length;
+  const latin=(t.match(/[A-Za-z]/g)||[]).length;
+  const thai=(t.match(/[\u0E00-\u0E7F]/g)||[]).length;
+  if(/^o\s*wo\s*=\s*a\s*wo/i.test(t))return true;
+  if(/^(?:[A-Za-z]\s*){1,3}[=<>«»£¥€$&@%]+/i.test(t))return true;
+  if(/^[\d\s@%๐-๙()=<>«»£¥€$&.,:;!?+\-_/\\]{5,}$/.test(t))return true;
+  if(letters===0&&symbols>=2)return true;
+  if(latin>0&&thai===0&&symbols>=2&&latin<8)return true;
+  return false;
+}
 function isScannerJunkLine(line){
   const t=normalizeScannerLine(line);
   if(!t)return false;
   if(/^={3,}\s*(?:IMG[_-]?\d+\.(?:png|jpe?g|webp)|.+\.pdf)\s*={3,}$/i.test(t))return true;
+  if(/^(?:IMG[_-]?\d+\.(?:png|jpe?g|webp)|.+\.pdf)$/i.test(t))return true;
   if(/^(?:หน้า|page)\s*\d+(?:\s*\/\s*\d+)?$/i.test(t))return true;
   if(/^(?:https?:\/\/)?(?:www\.)?(?:writer\.dek-d\.com|dek-d\.com|github\.com|maxsukung\.github\.io)\/?$/i.test(t))return true;
-  if(/^\d{1,2}:\d{2}\s+(?:จันทร์|อังคาร|พุธ|พฤหัสบดี|ศุกร์|เสาร์|อาทิตย์).{0,35}(?:%|แบต|wifi|ก\.ค\.|ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.)/i.test(t))return true;
-  if(/^\d{1,2}:\d{2}\b.*\b\d{1,3}%\b/.test(t))return true;
+  if(scannerLooksLikeStatusHeader(t))return true;
   if(/^[\W_]*(?:wifi|5g|4g|lte|battery|แบตเตอรี่)[\W_]*$/i.test(t))return true;
-  if(/^o\s*wo\s*=\s*a\s*wo/i.test(t))return true;
-  if(/^[\d\s@%๐-๙()=<>«»£¥€$&]{6,}$/.test(t))return true;
-  return false;
+  if(/^(?:ข้อความสะอาด|ข้อความดิบ|คัดลอกข้อความ(?:สะอาด)?|ล้างข้อความ)$/i.test(t))return true;
+  return scannerLooksLikeGarbage(t);
 }
 function scannerComparable(text){
   return normalizeScannerLine(text).toLocaleLowerCase('th').replace(/[^\p{L}\p{N}]+/gu,'');
 }
+function scannerSimilarity(a,b){
+  const x=scannerComparable(a),y=scannerComparable(b);
+  if(!x||!y)return 0;
+  if(x===y)return 1;
+  const short=x.length<y.length?x:y,long=x.length<y.length?y:x;
+  if(long.includes(short)&&short.length/long.length>.88)return short.length/long.length;
+  const grams=s=>{const out=new Set();for(let i=0;i<s.length-2;i++)out.add(s.slice(i,i+3));return out};
+  const A=grams(x),B=grams(y);if(!A.size||!B.size)return 0;
+  let hit=0;for(const g of A)if(B.has(g))hit++;
+  return (2*hit)/(A.size+B.size);
+}
 function dedupeScannerLines(lines){
-  const out=[];const seen=new Set();
+  const out=[];
   for(const raw of lines){
     const line=normalizeScannerLine(raw);
     if(!line){if(out.length&&out[out.length-1]!=='')out.push('');continue}
     if(isScannerJunkLine(line))continue;
-    const key=scannerComparable(line);
-    if(key.length>5&&seen.has(key))continue;
-    if(key.length>5)seen.add(key);
+    const recent=out.slice(-12).filter(Boolean);
+    if(recent.some(x=>scannerSimilarity(x,line)>.965))continue;
     out.push(line);
+  }
+  return out;
+}
+function dedupeScannerParagraphs(paras){
+  const out=[];
+  for(const p of paras){
+    const text=normalizeScannerLine(p.replace(/\n/g,' '));
+    if(!text)continue;
+    const duplicate=out.some(prev=>scannerSimilarity(prev,text)>.94);
+    if(!duplicate)out.push(p.trim());
   }
   return out;
 }
@@ -1294,20 +1341,16 @@ function mergeScannerBlocks(blocks){
     if(!clean.length){clean.push(text);continue}
     const prev=clean[clean.length-1];
     const a=prev.split('\n').filter(Boolean),b=text.split('\n').filter(Boolean);
-    let overlap=0,max=Math.min(8,a.length,b.length);
+    let overlap=0,max=Math.min(12,a.length,b.length);
     for(let n=max;n>=1;n--){
       const tail=a.slice(-n).map(scannerComparable).join('|');
       const head=b.slice(0,n).map(scannerComparable).join('|');
       if(tail&&tail===head){overlap=n;break}
     }
     if(overlap){clean[clean.length-1]=[...a,...b.slice(overlap)].join('\n')}
-    else{
-      const prevKey=scannerComparable(prev),curKey=scannerComparable(text);
-      if(prevKey===curKey)continue;
-      clean.push(text);
-    }
+    else if(scannerSimilarity(prev,text)<.94)clean.push(text);
   }
-  return clean.join('\n\n');
+  return dedupeScannerParagraphs(clean.join('\n\n').split(/\n{2,}/)).join('\n\n');
 }
 function cleanScannerText(raw){
   let text=repairThaiText(String(raw||''))
@@ -1317,18 +1360,19 @@ function cleanScannerText(raw){
   let lines=dedupeScannerLines(text.split('\n'));
   while(lines.length&&!lines[0])lines.shift();while(lines.length&&!lines[lines.length-1])lines.pop();
   const paras=[];let buf=[];
-  const flush=()=>{if(buf.length){paras.push(buf.join(' ').replace(/\s+([,.!?;:…])/g,'$1').trim());buf=[]}};
+  const flush=()=>{if(buf.length){const p=buf.join(' ').replace(/\s+([,.!?;:…])/g,'$1').replace(/\s{2,}/g,' ').trim();if(p)paras.push(p);buf=[]}};
   for(const line of lines){
     if(!line){flush();continue}
-    if(/^[-—–_]{3,}$/.test(line)){flush();paras.push('──────────');continue}
+    if(/^[-—–_─]{3,}$/.test(line)){flush();if(paras[paras.length-1]!=='──────────')paras.push('──────────');continue}
     const isHeading=/^(?:บทที่|ตอนที่|ลำดับตอนที่|ภาคที่|ตลาดชะตาฟ้า)\b/i.test(line);
-    const isDialogue=/^[“\"'‘]/.test(line)||/[”\"'’]$/.test(line);
-    if(isHeading||isDialogue){flush();paras.push(line);continue}
-    if(buf.length&&/[.!?…ฯ]$/.test(buf[buf.length-1]))flush();
+    const isDialogue=/^[“"'‘]/.test(line)||/[”"'’]$/.test(line);
+    const isShortBeat=line.length<=45&&/(?:กล่าว|ถาม|ตอบ|ตะโกน|กระซิบ|พึมพำ|ถอนหายใจ|หลับตา|ลืมตา|เงียบ|นิ่ง)$/.test(line);
+    if(isHeading||isDialogue||isShortBeat){flush();paras.push(line);continue}
+    if(buf.length&&/[.!?…ฯ”"'’]$/.test(buf[buf.length-1]))flush();
     buf.push(line);
   }
   flush();
-  return paras.filter(Boolean).join('\n\n').replace(/\n{3,}/g,'\n\n').trim();
+  return dedupeScannerParagraphs(paras).join('\n\n').replace(/\n{3,}/g,'\n\n').trim();
 }
 function setScannerMode(mode){
   const clean=$('scannerText'),raw=$('scannerRawText');
@@ -1369,7 +1413,7 @@ async function handleScannerFiles(files){
   status.textContent=`อ่านเสร็จแล้ว ${ordered.length} ไฟล์ · ทำความสะอาดหัว–ท้ายและรวมข้อความซ้ำแล้ว`;
 }
 
-const APP_VERSION='39';
+const APP_VERSION='41';
 let updateReloading=false,lastSeenVersion=APP_VERSION;
 async function checkForAppUpdate(registration){
   try{
