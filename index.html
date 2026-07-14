@@ -42,7 +42,7 @@
     <header class="app-header">
       <div class="brand-header" aria-label="Novel Studio">
         <div class="topbar-logo">NS</div>
-        <div class="topbar-brand-text"><div class="brand-title-line"><strong>Novel Studio</strong><span id="appVersionBadge" class="version-badge">V38</span></div><small>ผู้ช่วยเขียนนิยายออฟไลน์</small></div>
+        <div class="topbar-brand-text"><div class="brand-title-line"><strong>Novel Studio</strong><span id="appVersionBadge" class="version-badge">V39</span></div><small>ผู้ช่วยเขียนนิยายออฟไลน์</small></div>
         <div class="top-actions"><span id="saveState">บันทึกแล้ว</span><button id="installBtn" class="primary" hidden>ติดตั้ง</button></div>
       </div>
       <div class="page-header">
@@ -141,8 +141,10 @@
         <p class="meta">รูปภาพและ PDF แบบสแกนใช้ OCR ภาษาไทย/อังกฤษ ครั้งแรกต้องเชื่อมต่ออินเทอร์เน็ตเพื่อโหลดตัวอ่านภาษา</p>
         <div id="scannerStatus" class="inline-notice" hidden></div>
         <div id="scannerPreview" class="scanner-preview"></div>
-        <textarea id="scannerText" class="scanner-text" placeholder="ข้อความที่อ่านได้จะแสดงที่นี่"></textarea>
-        <div class="scanner-actions"><button id="copyScannerText" class="primary">คัดลอกข้อความ</button><button id="clearScannerText">ล้างข้อความ</button></div>
+        <div class="scanner-mode-tabs"><button id="showScannerClean" class="primary">ข้อความสะอาด</button><button id="showScannerRaw">ข้อความดิบ</button></div>
+        <textarea id="scannerText" class="scanner-text" placeholder="ข้อความที่ทำความสะอาดแล้วจะแสดงที่นี่"></textarea>
+        <textarea id="scannerRawText" class="scanner-text" placeholder="ข้อความ OCR ดิบจะแสดงที่นี่" hidden></textarea>
+        <div class="scanner-actions"><button id="copyScannerText" class="primary">คัดลอกข้อความสะอาด</button><button id="clearScannerText">ล้างข้อความ</button></div>
       </div>
     </section>
 

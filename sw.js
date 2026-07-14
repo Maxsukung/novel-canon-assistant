@@ -1,5 +1,5 @@
-const CACHE='novel-studio-v38-auto-update';
-const CORE=['./','./index.html','./styles.css?v=38','./app.js?v=38','./manifest.webmanifest','./icon-192.png','./icon-512.png','./mammoth.browser.min.js','./pdf.legacy.min.mjs','./pdf.legacy.worker.min.mjs'];
+const CACHE='novel-studio-v39-auto-update';
+const CORE=['./','./index.html','./styles.css?v=39','./app.js?v=39','./manifest.webmanifest','./icon-192.png','./icon-512.png','./mammoth.browser.min.js','./pdf.legacy.min.mjs','./pdf.legacy.worker.min.mjs'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(CORE)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('message',event=>{if(event.data?.type==='SKIP_WAITING')self.skipWaiting()});
