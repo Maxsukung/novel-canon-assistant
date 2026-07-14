@@ -1518,7 +1518,7 @@ async function handleScannerFiles(files){
   if(rawBlocks.length)status.textContent=`อ่านเสร็จแล้ว ${rawBlocks.length}/${ordered.length} ไฟล์ · ทำความสะอาดหัว–ท้ายและรวมข้อความซ้ำแล้ว`;
 }
 
-const APP_VERSION='47';
+const APP_VERSION='48';
 let updateReloading=false,lastSeenVersion=APP_VERSION;
 async function checkForAppUpdate(registration){
   try{
