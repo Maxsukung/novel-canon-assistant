@@ -1274,7 +1274,12 @@ function normalizeScannerLine(line){
     .trim();
 }
 function scannerWordTokens(text){
-  return normalizeScannerLine(text).match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g)||[];
+  // สำคัญ: ห้ามเรียก normalizeScannerLine() ที่นี่ เพราะ normalizeScannerLine
+  // เรียก cleanScannerInlineNoise() และฟังก์ชันนั้นตรวจภาษาอังกฤษผ่าน
+  // scannerHasMeaningfulEnglish() อีกครั้ง จึงเคยเกิด recursion จน call stack ล้น
+  return String(text||'').normalize('NFC')
+    .replace(/[\u200B-\u200D\uFEFF]/g,' ')
+    .match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g)||[];
 }
 function scannerHasMeaningfulEnglish(text){
   const tokens=scannerWordTokens(text);
@@ -1504,13 +1509,16 @@ async function handleScannerFiles(files){
     try{
       if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){rawBlocks.push(await scanPdfFile(file))}
       else if(file.type.startsWith('image/')){const url=URL.createObjectURL(file);preview.insertAdjacentHTML('beforeend',`<figure><img src="${url}" alt="${esc(file.name)}"><figcaption>${esc(file.name)}</figcaption></figure>`);rawBlocks.push(await scannerOcrImage(url,file.name));setTimeout(()=>URL.revokeObjectURL(url),60000)}
-    }catch(err){rawBlocks.push(`[อ่าน ${file.name} ไม่สำเร็จ: ${err?.message||err}]`)}
+    }catch(err){
+      console.error('Scanner failed:',file.name,err);
+      status.textContent=`อ่าน ${file.name} ไม่สำเร็จ: ${err?.message||err}`;
+    }
   }
   rawOut.value=rawBlocks.join('\n\n');out.value=mergeScannerBlocks(rawBlocks);setScannerMode('clean');
-  status.textContent=`อ่านเสร็จแล้ว ${ordered.length} ไฟล์ · ทำความสะอาดหัว–ท้ายและรวมข้อความซ้ำแล้ว`;
+  if(rawBlocks.length)status.textContent=`อ่านเสร็จแล้ว ${rawBlocks.length}/${ordered.length} ไฟล์ · ทำความสะอาดหัว–ท้ายและรวมข้อความซ้ำแล้ว`;
 }
 
-const APP_VERSION='45';
+const APP_VERSION='47';
 let updateReloading=false,lastSeenVersion=APP_VERSION;
 async function checkForAppUpdate(registration){
   try{
