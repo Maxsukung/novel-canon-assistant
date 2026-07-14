@@ -41,7 +41,7 @@ async function save(message='บันทึกแล้ว'){const p=project();
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800)}
 function activity(type,text){const p=project();if(!p)return;p.activity.unshift({id:uid(),type,text,at:now()});p.activity=p.activity.slice(0,30)}
 
-function switchView(id){window.scrollTo({top:0,left:0,behavior:'instant'});document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===id));document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));const labels={dashboard:['ภาพรวม','จัดการนิยายและตรวจความต่อเนื่อง'],documents:['คลังเอกสาร','แยกดูเอกสารตามประเภทที่เลือก'],novelContent:['เนื้อหานิยาย','อ่านต้นฉบับที่นำเข้าแบบแยกบทและตอน'],novelReader:['อ่านเนื้อหานิยาย','โหมดอ่านอย่างเดียว ไม่สามารถแก้ไขได้'],canon:['Canon Database','ล็อกข้อเท็จจริงและกฎของเรื่อง'],characters:['ตัวละคร','สถานะ ความรู้ และความสัมพันธ์'],characterDetail:['ข้อมูลตัวละคร','ข้อมูลที่จัดหมวดหมู่จากฐานข้อมูล'],timeline:['Timeline','ลำดับเหตุการณ์ในเรื่อง'],editor:['เขียนบท','ตัวแก้ไขต้นฉบับพร้อมบันทึกอัตโนมัติ'],checker:['ตรวจความขัดแย้ง','ตรวจบทปัจจุบันกับฐานข้อมูล'],dna:['Writing DNA','วิเคราะห์รูปแบบการเขียน'],settings:['สำรองข้อมูล','ส่งออกและกู้คืนข้อมูลในเครื่อง']};const label=labels[id]||labels.dashboard;$('pageTitle').textContent=label[0];$('pageSubtitle').textContent=label[1];if(innerWidth<901)$('.sidebar').classList.remove('open')}
+function switchView(id){window.scrollTo({top:0,left:0,behavior:'instant'});document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===id));document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));const labels={dashboard:['ภาพรวม','จัดการนิยายและตรวจความต่อเนื่อง'],documents:['คลังเอกสาร','แยกดูเอกสารตามประเภทที่เลือก'],novelContent:['เนื้อหานิยาย','อ่านต้นฉบับที่นำเข้าแบบแยกบทและตอน'],novelReader:['อ่านเนื้อหานิยาย','โหมดอ่านอย่างเดียว ไม่สามารถแก้ไขได้'],canon:['Canon Database','ล็อกข้อเท็จจริงและกฎของเรื่อง'],characters:['ตัวละคร','สถานะ ความรู้ และความสัมพันธ์'],characterDetail:['ข้อมูลตัวละคร','ข้อมูลที่จัดหมวดหมู่จากฐานข้อมูล'],timeline:['Timeline','ลำดับเหตุการณ์ในเรื่อง'],editor:['เขียนบท','ตัวแก้ไขต้นฉบับพร้อมบันทึกอัตโนมัติ'],checker:['ตรวจความขัดแย้ง','ตรวจบทปัจจุบันกับฐานข้อมูล'],dna:['Writing DNA','วิเคราะห์รูปแบบการเขียน'],scanner:['สแกนเอกสาร','อ่านข้อความจากรูปภาพและ PDF'],settings:['สำรองข้อมูล','ส่งออกและกู้คืนข้อมูลในเครื่อง']};const label=labels[id]||labels.dashboard;$('pageTitle').textContent=label[0];$('pageSubtitle').textContent=label[1];if(innerWidth<901)$('.sidebar').classList.remove('open')}
 
 function openModal(title,html,onReady){$('modalTitle').textContent=title;$('modalBody').innerHTML=html;$('modal').hidden=false;onReady?.()}
 function closeModal(){$('modal').hidden=true;$('modalBody').innerHTML=''}
@@ -191,7 +191,19 @@ function parseChapterHeading(line){
   const clean=normalizeHeadingLine(line).replace(/^\s*\[?rewrite\]?\s*/i,'');
   const m=clean.match(/^((?:บท|ตอน)ที่)\s*([๐-๙0-9]+)\s*(?:[:：\-–—])\s*(.+?)\s*$/i);
   if(!m)return null;
-  return {kind:m[1],numberText:m[2],number:Number(thaiDigitsToArabic(m[2])),title:m[3].trim(),full:`${m[1]} ${m[2]} : ${m[3].trim()}`};
+  return {kind:m[1],numberText:m[2],number:Number(thaiDigitsToArabic(m[2])),title:sanitizeImportedChapterTitle(m[3]),full:`${m[1]} ${m[2]} : ${sanitizeImportedChapterTitle(m[3])}`};
+}
+function sanitizeImportedChapterTitle(title){
+  let t=repairThaiText(String(title||'')).replace(/\s+/g,' ').trim();
+  // A chapter title should be a compact heading, not the first paragraph accidentally joined to it.
+  const hardBreak=t.search(/(?:ป่าหิมพานต์|แสงแดด|ลมเย็น|ความมืด|เสียง|เขา|เธอ|มัน|อนันต์|คุโรชิ|เด็กชาย|ชายหนุ่ม|หญิงสาว).{12,}/);
+  if(hardBreak>3)t=t.slice(0,hardBreak).trim();
+  if(t.length>72){
+    const words=t.split(/\s+/);let out='';
+    for(const w of words){if((out+' '+w).trim().length>72)break;out=(out+' '+w).trim()}
+    t=out||t.slice(0,72);
+  }
+  return t.replace(/[.,;…]+$/,'').trim();
 }
 function splitNovelChapters(text,blocks=null){
   // Prefer DOCX block boundaries. They preserve the title paragraph separately
@@ -786,7 +798,7 @@ function reconcileCharacterIdentity(p){for(const c of p.characters||[]){const cl
 function stripCandidateAction(value){let n=String(value||'').trim();let changed=true;while(changed){changed=false;for(const v of [...THAI_ACTION_SUFFIXES].sort((a,b)=>b.length-a.length)){if(n.endsWith(v)&&n.length>v.length+1){n=n.slice(0,-v.length).trim();changed=true;break}}}return n}
 function cleanCandidateName(value){let n=repairExtractedThaiName(String(value||'')).replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/^[“”"'‘’\s—–-]+|[“”"'‘’.,!?…:;\s—–-]+$/g,'').replace(/\s+/g,' ').trim();n=stripCandidateAction(n);n=n.replace(/^(?:นาย|นาง|นางสาว|เด็กชาย|เด็กหญิง|เจ้าหญิง|เจ้าชาย|องค์|พญา|ฤๅษี|หลวงตา|ท่าน)\s*/,'').trim();return n}
 function isKnownOrEmbeddedCharacter(name,p){const clean=cleanCandidateName(name),key=normalizedName(clean);if(!key)return true;if(findExistingCharacterForName(clean,p))return true;for(const known of knownCharacterNames(p)){const k=normalizedName(known);if(!k)continue;if(key===k)return true;if(key.startsWith(k)&&key.length-k.length<=12&&THAI_ACTION_SUFFIXES.some(v=>key===k+normalizedName(v)))return true;if(k.startsWith(key)&&k.length-key.length<=18)return true}return false}
-function plausibleNovelCandidate(name){const n=cleanCandidateName(name),low=n.toLowerCase();if(!n||n.length<2||n.length>24)return false;if(DESCRIPTOR_HINTS.includes(n))return false;if(CANDIDATE_STOP_WORDS.has(n)||CANDIDATE_STOP_WORDS.has(low))return false;if(/\s{2,}|\d|[A-Za-z]{2,}|(?:บท|ตอน)ที่|DATABASE|CANON|ARC|PART|STATUS/i.test(n))return false;if(THAI_NON_NAME_PREFIXES.some(v=>n===v||n.startsWith(v)))return false;if(THAI_ACTION_SUFFIXES.some(v=>n===v))return false;if(/[!?…:;]|(?:ครับ|ค่ะ|คะ|นะ|สิ|เลย|แล้ว|ไม่)$/u.test(n))return false;if(/^(?:นักธนู|นักบวช|ซอมบี้|อันเดด|โกสต์|พระเอก|นางเอก|ชายผู้|หญิงผู้|ชายคน|หญิงคน)/u.test(n))return false;const thai=(n.match(/[ก-ฮ]/g)||[]).length;if(thai<2)return false;const words=n.split(/\s+/);if(words.length>3)return false;return true}
+function plausibleNovelCandidate(name){const n=cleanCandidateName(name),low=n.toLowerCase();if(!n||n.length<2||n.length>24)return false;if(DESCRIPTOR_HINTS.includes(n))return false;if(CANDIDATE_STOP_WORDS.has(n)||CANDIDATE_STOP_WORDS.has(low))return false;if(/\s{2,}|\d|[A-Za-z]{2,}|(?:บท|ตอน)ที่|DATABASE|CANON|ARC|PART|STATUS/i.test(n))return false;if(THAI_NON_NAME_PREFIXES.some(v=>n===v||n.startsWith(v)))return false;if(THAI_ACTION_SUFFIXES.some(v=>n===v))return false;if(/[!?…:;]|(?:ครับ|ค่ะ|คะ|นะ|สิ|เลย|แล้ว|ไม่)$/u.test(n))return false;if(/\s+(?:ประเมิน|ยัง|กำลัง|พูด|ตอบ|ถาม|เดิน|มอง|หยุด|ขยับ|เคลื่อนไหว|ลอย|พยายาม|หัน|ยืน|นั่ง|ก้ม|เงย|สั่ง|บอก)$/u.test(n))return false;if(/^(?:นักธนู|นักบวช|ซอมบี้|อันเดด|โกสต์|พระเอก|นางเอก|ชายผู้|หญิงผู้|ชายคน|หญิงคน)/u.test(n))return false;const thai=(n.match(/[ก-ฮ]/g)||[]).length;if(thai<2)return false;const words=n.split(/\s+/);if(words.length>3)return false;return true}
 function boundaryCandidate(raw){let n=cleanCandidateName(raw);if(!n)return'';for(const knownAction of THAI_ACTION_SUFFIXES){const i=n.indexOf(knownAction);if(i>1){n=n.slice(0,i);break}}return cleanCandidateName(n)}
 function addCandidateHit(map,name,chapter,text,index,verb,kind){name=boundaryCandidate(name);const key=normalizedName(name);if(!key)return;const row=map.get(key)||{id:uid(),name,chapterIds:new Set(),chapterTitles:new Set(),rawHits:0,verbs:new Set(),kinds:new Set(),contexts:[],confidence:0};row.chapterIds.add(chapter.id);row.chapterTitles.add(chapterDisplayTitle(chapter));row.rawHits++;if(verb)row.verbs.add(verb);if(kind)row.kinds.add(kind);if(row.contexts.length<3)row.contexts.push(text.slice(Math.max(0,index-70),Math.min(text.length,index+name.length+120)).replace(/\s+/g,' ').trim());map.set(key,row)}
 function discoverCharacterCandidates(p){
@@ -817,7 +829,7 @@ function discoverCharacterCandidates(p){
   }
   return out.sort((a,b)=>b.confidence-a.confidence||b.chapterIds.length-a.chapterIds.length||b.count-a.count).slice(0,12)
 }
-async function scanNovelCharacters(){if(!ensureProject())return;const p=project();p.characterCandidates=[];const reconciled=reconcileCharacterIdentity(p);const found=discoverCharacterCandidates(p).filter(c=>!canonicalIdentityForName(c.name)&&!findExistingCharacterForName(c.name,p)&&!DESCRIPTOR_HINTS.includes(c.name)&&!/^(?:ชายผู้|หญิงผู้|ชายคน|หญิงคน|หญิงสาวจาก|ชายจาก|หญิงจาก)/.test(c.name));p.characterCandidates=found;activity('character',`วิเคราะห์ตัวละครจากนิยาย: รวมซ้ำ ${reconciled.merged} · เติมชื่อเต็ม ${reconciled.full} · เชื่อมชื่อเรียก ${reconciled.descriptors} · ตัดรายการเดิม ${reconciled.candidates||0} · รอตรวจ ${found.length} (V35)`);await save();toast(`V35 จัดระเบียบแล้ว: รวม ${reconciled.merged} · ชื่อเต็ม ${reconciled.full} · ชื่อเรียก ${reconciled.descriptors} · รอตรวจ ${found.length}`)}
+async function scanNovelCharacters(){if(!ensureProject())return;const p=project();p.characterCandidates=[];const reconciled=reconcileCharacterIdentity(p);const found=discoverCharacterCandidates(p).filter(c=>!canonicalIdentityForName(c.name)&&!findExistingCharacterForName(c.name,p)&&!DESCRIPTOR_HINTS.includes(c.name)&&!/^(?:ชายผู้|หญิงผู้|ชายคน|หญิงคน|หญิงสาวจาก|ชายจาก|หญิงจาก)/.test(c.name));p.characterCandidates=found;activity('character',`วิเคราะห์ตัวละครจากนิยาย: รวมซ้ำ ${reconciled.merged} · เติมชื่อเต็ม ${reconciled.full} · เชื่อมชื่อเรียก ${reconciled.descriptors} · ตัดรายการเดิม ${reconciled.candidates||0} · รอตรวจ ${found.length} (V38)`);await save();toast(`V38 จัดระเบียบแล้ว: รวม ${reconciled.merged} · ชื่อเต็ม ${reconciled.full} · ชื่อเรียก ${reconciled.descriptors} · รอตรวจ ${found.length}`)}
 async function acceptCharacterCandidate(id){const p=project(),c=(p.characterCandidates||[]).find(x=>x.id===id);if(!c)return;if(!isKnownOrEmbeddedCharacter(c.name,p))p.characters.push({id:uid(),name:c.name,status:'ไม่ทราบ',role:'พบจากเนื้อหานิยาย',aliases:[],facts:`พบใน ${c.chapterTitles.length} ตอน รวม ${c.count} ครั้ง`,limits:'',structured:{'ปรากฏครั้งแรก':c.chapterTitles[0]||'','หลักฐานการสกัด':`${(c.kinds||[]).join(', ')} · กริยาที่พบ ${(c.verbs||[]).join(', ')}`},source:'สกัดจากเนื้อหานิยาย',autoExtractedFromNovel:true,updatedAt:now()});p.characterCandidates=p.characterCandidates.filter(x=>x.id!==id);await save();toast(`เพิ่ม ${c.name} เป็นตัวละครแล้ว`)}
 async function ignoreCharacterCandidate(id){const p=project(),c=(p.characterCandidates||[]).find(x=>x.id===id);if(!c)return;p.ignoredCharacterNames=[...new Set([...(p.ignoredCharacterNames||[]),c.name])];p.characterCandidates=p.characterCandidates.filter(x=>x.id!==id);await save();toast(`ซ่อน ${c.name} แล้ว`)}
 async function clearCharacterCandidates(saveAsIgnored=false){const p=project();if(!p)return;const items=p.characterCandidates||[];if(saveAsIgnored)p.ignoredCharacterNames=[...new Set([...(p.ignoredCharacterNames||[]),...items.map(x=>x.name)])];p.characterCandidates=[];await save();renderCharacterCandidates(p);toast(saveAsIgnored?'ปฏิเสธรายการรอตรวจทั้งหมดแล้ว':'ล้างรายการรอตรวจทั้งหมดแล้ว')}
@@ -1212,12 +1224,46 @@ $('saveChapter').onclick=async()=>{if(!ensureProject())return;const p=project(),
 };
 $('runChecker').onclick=async()=>{if(!ensureProject())return;const text=$('chapterText').value.trim();if(!text)return toast('กรุณาใส่เนื้อหาบทก่อน');project().issues=checkChapter(text,project());activity('check',`ตรวจความขัดแย้ง ${project().issues.length} รายการ`);await save();switchView('checker');toast('ตรวจเสร็จแล้ว')};
 $('analyzeDNA').onclick=analyzeDNA;
+$('scannerInput').onchange=async e=>{const files=[...(e.target.files||[])];if(files.length)await handleScannerFiles(files);e.target.value=''};$('copyScannerText').onclick=async()=>{const t=$('scannerText').value;if(!t)return toast('ยังไม่มีข้อความ');try{await navigator.clipboard.writeText(t);toast('คัดลอกข้อความแล้ว')}catch(_){$('scannerText').select();document.execCommand('copy');toast('คัดลอกข้อความแล้ว')}};$('clearScannerText').onclick=()=>{$('scannerText').value='';$('scannerPreview').innerHTML='';$('scannerStatus').hidden=true};
+
 function download(obj,name){const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 $('exportBackup').onclick=()=>download(state,`novel-studio-backup-${new Date().toISOString().slice(0,10)}.noveldb.json`);$('exportProject').onclick=()=>{if(ensureProject())download(project(),`${project().name.replace(/[^\p{L}\p{N}_-]+/gu,'-')}.noveldb.json`)};
 $('importBackup').onchange=async e=>{try{const x=JSON.parse(await e.target.files[0].text());if(!Array.isArray(x.projects))throw new Error('รูปแบบไฟล์ไม่ถูกต้อง');state={version:x.version||1,projects:x.projects.map(normalizeProject),activeProjectId:x.activeProjectId||x.projects[0]?.id||null};await save();toast('กู้คืนข้อมูลแล้ว')}catch(err){toast(err.message||'นำเข้าไม่สำเร็จ')}e.target.value=''};
 $('deleteProject').onclick=async()=>{if(!ensureProject())return;if(confirm(`ลบโปรเจกต์ “${project().name}” หรือไม่?`)){state.projects=state.projects.filter(x=>x.id!==state.activeProjectId);state.activeProjectId=state.projects[0]?.id||null;await save();toast('ลบโปรเจกต์แล้ว')}};$('clearAll').onclick=async()=>{if(confirm('ล้างข้อมูลทุกโปรเจกต์หรือไม่? การกระทำนี้ย้อนกลับไม่ได้')){state={version:1,projects:[],activeProjectId:null};await save();toast('ล้างข้อมูลแล้ว')}};
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('installBtn').hidden=false});$('installBtn').onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$('installBtn').hidden=true}};
-const APP_VERSION='34';
+
+async function scannerOcrImage(source,label='รูปภาพ'){
+  if(!window.Tesseract)throw new Error('ยังโหลดตัวอ่าน OCR ไม่สำเร็จ กรุณาเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่');
+  const status=$('scannerStatus');status.hidden=false;status.textContent=`กำลังอ่านข้อความจาก ${label}…`;
+  const result=await window.Tesseract.recognize(source,'tha+eng',{logger:m=>{if(m.status&&typeof m.progress==='number')status.textContent=`${label}: ${m.status} ${Math.round(m.progress*100)}%`}});
+  return repairThaiText(result?.data?.text||'').trim();
+}
+async function scanPdfFile(file){
+  const lib=await getPdfJs(),bytes=new Uint8Array(await file.arrayBuffer());
+  const pdf=await lib.getDocument({data:bytes}).promise;const parts=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i),content=await page.getTextContent();
+    const plain=pdfItemsToStructuredLines(content.items).map(x=>x.text).join('\n').trim();
+    if(plain.length>40){parts.push(`หน้า ${i}\n${plain}`);continue}
+    const viewport=page.getViewport({scale:1.8}),canvas=document.createElement('canvas');
+    canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+    await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+    const text=await scannerOcrImage(canvas,`PDF หน้า ${i}/${pdf.numPages}`);parts.push(`หน้า ${i}\n${text}`);
+  }
+  return parts.join('\n\n');
+}
+async function handleScannerFiles(files){
+  const status=$('scannerStatus'),preview=$('scannerPreview'),out=$('scannerText');status.hidden=false;preview.innerHTML='';const results=[];
+  for(const file of files){
+    try{
+      if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){results.push(`===== ${file.name} =====\n${await scanPdfFile(file)}`)}
+      else if(file.type.startsWith('image/')){const url=URL.createObjectURL(file);preview.insertAdjacentHTML('beforeend',`<figure><img src="${url}" alt="${esc(file.name)}"><figcaption>${esc(file.name)}</figcaption></figure>`);results.push(`===== ${file.name} =====\n${await scannerOcrImage(url,file.name)}`);setTimeout(()=>URL.revokeObjectURL(url),60000)}
+    }catch(err){results.push(`===== ${file.name} =====\n[อ่านไม่สำเร็จ: ${err?.message||err}]`)}
+  }
+  out.value=results.join('\n\n');status.textContent='อ่านเอกสารเสร็จแล้ว';
+}
+
+const APP_VERSION='38';
 let updateReloading=false,lastSeenVersion=APP_VERSION;
 async function checkForAppUpdate(registration){
   try{
