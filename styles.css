@@ -233,7 +233,6 @@ html,body{max-width:100%;overflow-x:hidden}
 .brand-title-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.version-badge{display:inline-flex;align-items:center;justify-content:center;padding:3px 9px;border-radius:999px;background:#ede9fe;color:#5b3df5;font-size:12px;font-weight:800;line-height:1.2;border:1px solid #ddd6fe}
 
 /* V35 mobile navigation reliability */
-.sidebar{position:relative}
 .sidebar-close-btn{display:none;position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;width:42px;height:42px;padding:0;border-radius:12px;border:1px solid #334155;background:#1f2937;color:#fff;font-size:30px;line-height:1;z-index:3}
 html.menu-open,body.menu-open{overflow:hidden!important;overscroll-behavior:none;touch-action:none}
 @media(max-width:900px){
@@ -244,9 +243,19 @@ html.menu-open,body.menu-open{overflow:hidden!important;overscroll-behavior:none
 
 /* V36 — iPad drawer hardening */
 @media(max-width:900px){
- .sidebar{top:0!important;bottom:0!important;height:100dvh!important;transform:translateX(-105%);left:0!important;transition:transform .22s ease!important;will-change:transform;visibility:hidden;pointer-events:none}
+ .sidebar{position:fixed!important;top:0!important;bottom:0!important;height:100dvh!important;transform:translateX(-105%);left:0!important;transition:transform .22s ease!important;will-change:transform;visibility:hidden;pointer-events:none}
  .sidebar.open{transform:translateX(0)!important;visibility:visible;pointer-events:auto}
  .sidebar-overlay{display:block!important;visibility:hidden;opacity:0;pointer-events:none;touch-action:none;z-index:999!important}
  .sidebar-overlay.show{visibility:visible;opacity:1;pointer-events:auto}
  .sidebar-close-btn{display:grid!important;place-items:center!important;touch-action:manipulation}
+}
+
+
+/* V37 — fix duplicate menu toggle and off-canvas layout gap */
+@media(max-width:900px){
+  #appShell{display:block!important;min-height:100dvh}
+  .sidebar{position:fixed!important;inset:0 auto 0 0!important;width:min(86vw,320px)!important;height:100dvh!important;margin:0!important;z-index:1000!important;transform:translate3d(-105%,0,0)!important}
+  .sidebar.open{transform:translate3d(0,0,0)!important}
+  .main{width:100%!important;min-height:100dvh!important}
+  .sidebar-overlay{position:fixed!important;inset:0!important;z-index:999!important}
 }

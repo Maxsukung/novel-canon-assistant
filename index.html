@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Novel Studio">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=36">
+<link rel="stylesheet" href="styles.css?v=37">
 <title>Novel Studio</title>
 </head>
 <body>
@@ -35,7 +35,7 @@
     </nav>
   </aside>
 
-  <div id="sidebarOverlay" class="sidebar-overlay" onclick="window.closeNovelMenu && window.closeNovelMenu()"></div>
+  <div id="sidebarOverlay" class="sidebar-overlay"></div>
 
   <main class="main">
     <header class="app-header">
@@ -45,7 +45,7 @@
         <div class="top-actions"><span id="saveState">บันทึกแล้ว</span><button id="installBtn" class="primary" hidden>ติดตั้ง</button></div>
       </div>
       <div class="page-header">
-        <button id="menuBtn" class="icon-btn" type="button" aria-label="เปิดเมนู" onclick="window.toggleNovelMenu && window.toggleNovelMenu()">☰</button>
+        <button id="menuBtn" class="icon-btn" type="button" aria-label="เปิดเมนู">☰</button>
         <div class="topbar-page"><h1 id="pageTitle">ภาพรวม</h1><p id="pageSubtitle">จัดการนิยายและตรวจความต่อเนื่อง</p></div>
       </div>
     </header>
@@ -145,6 +145,6 @@
 
 
 <script src="mammoth.browser.min.js"></script>
-<script type="module" src="app.js?v=36"></script>
+<script type="module" src="app.js?v=37"></script>
 </body>
 </html>
