@@ -38,14 +38,16 @@
   <div id="sidebarOverlay" class="sidebar-overlay" onclick="window.closeNovelMenu && window.closeNovelMenu()"></div>
 
   <main class="main">
-    <header class="topbar">
-      <button id="menuBtn" class="icon-btn" type="button" aria-label="เปิดเมนู" onclick="window.toggleNovelMenu && window.toggleNovelMenu()">☰</button>
-      <div class="topbar-brand" aria-label="Novel Studio">
+    <header class="app-header">
+      <div class="brand-header" aria-label="Novel Studio">
         <div class="topbar-logo">NS</div>
         <div class="topbar-brand-text"><strong>Novel Studio</strong><small>ผู้ช่วยเขียนนิยายออฟไลน์</small></div>
+        <div class="top-actions"><span id="saveState">บันทึกแล้ว</span><button id="installBtn" class="primary" hidden>ติดตั้ง</button></div>
       </div>
-      <div class="topbar-page"><h1 id="pageTitle">ภาพรวม</h1><p id="pageSubtitle">จัดการนิยายและตรวจความต่อเนื่อง</p></div>
-      <div class="top-actions"><span id="saveState">บันทึกแล้ว</span><button id="installBtn" class="primary" hidden>ติดตั้ง</button></div>
+      <div class="page-header">
+        <button id="menuBtn" class="icon-btn" type="button" aria-label="เปิดเมนู" onclick="window.toggleNovelMenu && window.toggleNovelMenu()">☰</button>
+        <div class="topbar-page"><h1 id="pageTitle">ภาพรวม</h1><p id="pageSubtitle">จัดการนิยายและตรวจความต่อเนื่อง</p></div>
+      </div>
     </header>
 
     <section id="dashboard" class="view active">
@@ -113,7 +115,7 @@
           <textarea id="chapterText" spellcheck="false" placeholder="เริ่มเขียนหรือวางต้นฉบับที่นี่..."></textarea>
           <div class="editor-footer"><span id="wordStats">0 ตัวอักษร · 0 คำ · 0 ย่อหน้า</span><span id="autosaveState">ยังไม่ได้บันทึก</span></div>
         </div>
-        <aside class="card chapter-panel"><h3>ตอนที่บันทึกไว้</h3><div id="chapterList" class="list compact"></div></aside>
+        <aside class="card chapter-panel"><h3>ตอนที่บันทึกและนำเข้า</h3><p class="panel-help">เลือกตอนเพื่อแก้ไข หรือลบได้จากหน้านี้</p><div id="chapterList" class="list compact"></div></aside>
       </div>
     </section>
 

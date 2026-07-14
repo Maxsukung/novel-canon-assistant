@@ -206,3 +206,16 @@ html,body{max-width:100%;overflow-x:hidden}
 .stat[data-stat="chapters"]{cursor:pointer}.stat[data-stat="chapters"]:hover{border-color:#c7d2fe}
 @media(max-width:900px){.topbar-brand{margin-right:12px;padding-right:12px}.topbar-brand-text small{display:none}.topbar-brand-text strong{font-size:16px}.topbar-page{flex:1}.topbar-logo{width:38px;height:38px}.hero-actions{width:100%;justify-content:stretch}.hero-actions>*{flex:1}}
 @media(max-width:620px){.topbar-brand-text{display:none}.topbar-brand{border-right:0;padding-right:0;margin-right:4px}.topbar-page h1{font-size:19px}.topbar-page p{font-size:12px}.top-actions #saveState{display:none}}
+
+/* v23: two-row app header and unified chapter editor */
+.app-header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.96);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.brand-header{min-height:72px;display:flex;align-items:center;gap:12px;padding:10px 28px;border-bottom:1px solid var(--line)}
+.brand-header .top-actions{margin-left:auto}
+.page-header{min-height:70px;display:flex;align-items:center;padding:8px 28px;background:#fff}
+.page-header .icon-btn{display:block;margin-right:14px}
+.page-header h1{font-size:22px;margin:0}.page-header p{font-size:13px;color:var(--muted);margin:3px 0 0}
+.topbar{display:none!important}
+.chapter-saved-row{align-items:center}.chapter-saved-row .badge{margin-bottom:5px}.saved-chapter-actions{display:flex;gap:6px;flex:0 0 auto}.saved-chapter-actions button{padding:7px 9px;font-size:12px}
+.panel-help{font-size:12px;color:var(--muted);margin:-6px 0 12px}
+@media(max-width:900px){.brand-header,.page-header{padding-left:18px;padding-right:18px}.brand-header{min-height:68px}.page-header{min-height:66px}.topbar-brand-text small{display:block}.chapter-saved-row{align-items:flex-start}.saved-chapter-actions{flex-direction:column}}
+@media(max-width:560px){.brand-header .top-actions #saveState{display:none}.brand-header{padding-top:8px;padding-bottom:8px}.page-header{padding-top:7px;padding-bottom:7px}.saved-chapter-actions button{padding:7px}}

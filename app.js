@@ -26,7 +26,7 @@ async function getPdfJs(){
 
 const DB='NovelStudioDB', VER=1, STORE='state', KEY='app';
 let state={version:1,projects:[],activeProjectId:null};
-let currentChapterId=null, currentCharacterId=null, currentNovelDocumentId=null, saveTimer=null, deferredPrompt=null, novelRenderToken=0, activePdfObjectUrl=null;
+let currentChapterId=null, currentChapterSource='manual', currentCharacterId=null, currentNovelDocumentId=null, saveTimer=null, deferredPrompt=null, novelRenderToken=0, activePdfObjectUrl=null;
 const $=q=>q.startsWith('#')||q.startsWith('.')||q.includes(' ')?document.querySelector(q):document.getElementById(q);
 const uid=()=>crypto.randomUUID?.()||`${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const now=()=>new Date().toISOString();
@@ -427,8 +427,8 @@ function timelineModal(item=null){if(!ensureProject())return;openModal(item?'แ
 
 function textStats(text){const clean=text.trim();return {chars:clean.length,words:(clean.match(/[\p{L}\p{N}]+/gu)||[]).length,paras:clean?clean.split(/\n\s*\n/).filter(x=>x.trim()).length:0,dialogues:(clean.match(/[“”"].+?[“”"]/g)||[]).length,sentences:(clean.split(/[.!?…]|[。！？]/).filter(x=>x.trim()).length)}}
 function updateEditorStats(){const s=textStats($('chapterText').value);$('wordStats').textContent=`${s.chars.toLocaleString('th-TH')} ตัวอักษร · ${s.words.toLocaleString('th-TH')} คำ · ${s.paras} ย่อหน้า`}
-function autosaveDraft(){clearTimeout(saveTimer);$('autosaveState').textContent='มีการแก้ไข';saveTimer=setTimeout(async()=>{if(!project())return;localStorage.setItem(`novel-draft-${project().id}`,JSON.stringify({id:currentChapterId,title:$('chapterTitle').value,text:$('chapterText').value,at:now()}));$('autosaveState').textContent='บันทึกร่างอัตโนมัติแล้ว'},650)}
-function loadChapter(ch){currentChapterId=ch.id;$('chapterTitle').value=ch.title;$('chapterText').value=ch.text;updateEditorStats();$('autosaveState').textContent=`บันทึกล่าสุด ${new Date(ch.updatedAt).toLocaleString('th-TH')}`;switchView('editor')}
+function autosaveDraft(){clearTimeout(saveTimer);$('autosaveState').textContent='มีการแก้ไข';saveTimer=setTimeout(async()=>{if(!project())return;localStorage.setItem(`novel-draft-${project().id}`,JSON.stringify({id:currentChapterId,source:currentChapterSource,title:$('chapterTitle').value,text:$('chapterText').value,at:now()}));$('autosaveState').textContent='บันทึกร่างอัตโนมัติแล้ว'},650)}
+function loadChapter(ch,source='manual'){currentChapterId=ch.id;currentChapterSource=source;$('chapterTitle').value=chapterDisplayTitle(ch);$('chapterText').value=ch.text||'';updateEditorStats();$('autosaveState').textContent=`${source==='imported'?'ต้นฉบับนำเข้า · ':''}บันทึกล่าสุด ${new Date(ch.updatedAt||ch.createdAt).toLocaleString('th-TH')}`;switchView('editor')}
 
 function snippets(text,term,limit=2){const out=[];let start=0;const low=text.toLowerCase(),q=term.toLowerCase();while(out.length<limit){const i=low.indexOf(q,start);if(i<0)break;out.push(text.slice(Math.max(0,i-70),Math.min(text.length,i+term.length+100)).replace(/\s+/g,' '));start=i+q.length}return out}
 function checkChapter(text,p){const issues=[];const lower=text.toLowerCase();
@@ -442,7 +442,7 @@ function checkChapter(text,p){const issues=[];const lower=text.toLowerCase();
 
 function analyzeDNA(){if(!ensureProject())return;const p=project();const texts=[...p.documents.filter(d=>d.type==='chapter').map(d=>d.text),...p.chapters.map(c=>c.text)].filter(Boolean);if(!texts.length)return toast('ยังไม่มีต้นฉบับสำหรับวิเคราะห์');const text=texts.join('\n\n');const s=textStats(text);const paras=text.split(/\n\s*\n/).filter(x=>x.trim());const words=(text.toLowerCase().match(/[\p{L}]{2,}/gu)||[]).filter(w=>!['และ','ของ','ที่','ใน','เป็น','ก็','ไม่','แต่','แล้ว','กับ','ให้','ได้','จาก','เขา','เธอ','มัน','ว่า','เมื่อ','ยัง','อย่าง','หรือ','ซึ่ง','นั้น','นี้','ขึ้น','ลง','ไป','มา'].includes(w));const freq={};words.forEach(w=>freq[w]=(freq[w]||0)+1);const top=Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,24);const quoteChars=(text.match(/[“"]/g)||[]).length;const avgPara=paras.length?Math.round(text.length/paras.length):0;p.dna={...s,documents:texts.length,avgParagraphChars:avgPara,dialogueSignal:Math.min(100,Math.round(quoteChars/Math.max(1,text.length)*1000)),top,analyzedAt:now()};activity('dna','วิเคราะห์ Writing DNA');save();toast('วิเคราะห์ Writing DNA แล้ว')}
 
-function renderAll(){renderProjectSelect();const p=project();$('heroProject').textContent=p?.name||'ยังไม่มีโปรเจกต์';renderDashboard(p);renderDocuments(p);renderNovelContent(p);renderCanon(p);renderCharacters(p);if(currentCharacterId)renderCharacterDetail(p?.characters.find(x=>x.id===currentCharacterId));if(currentNovelDocumentId)renderNovelReader(p?.documents.find(x=>x.id===currentNovelDocumentId));renderTimeline(p);renderChapters(p);renderIssues(p);renderDNA(p)}
+function renderAll(){renderProjectSelect();const p=project();$('heroProject').textContent=p?.name||'ยังไม่มีโปรเจกต์';renderDashboard(p);renderDocuments(p);renderNovelContent(p);renderCanon(p);renderCharacters(p);if(currentCharacterId)renderCharacterDetail(p?.characters.find(x=>x.id===currentCharacterId));if(currentNovelDocumentId)renderNovelReader(resolveNovelEntry(p,currentNovelDocumentId));renderTimeline(p);renderChapters(p);renderIssues(p);renderDNA(p)}
 function renderProjectSelect(){const sel=$('activeProjectSelect');sel.innerHTML=state.projects.length?state.projects.map(p=>`<option value="${p.id}" ${p.id===state.activeProjectId?'selected':''}>${esc(p.name)}</option>`).join(''):'<option value="">ยังไม่มีโปรเจกต์</option>'}
 function normalizedChapterIdentity(title=''){return thaiDigitsToArabic(String(title)).toLowerCase().replace(/\s+/g,' ').replace(/[\[\](){}]/g,'').trim()}
 function actualChapterCount(p){const titles=new Set();derivedChapters(p).forEach(d=>titles.add(normalizedChapterIdentity(chapterDisplayTitle(d))||d.id));(p?.chapters||[]).forEach(c=>titles.add(normalizedChapterIdentity(c.title)||c.id));return titles.size}
@@ -470,7 +470,35 @@ function chapterDisplayTitle(doc){
   const n=chapterSortNumber(doc);return n<999999?`บทที่ ${n} : ${raw}`:raw;
 }
 function novelExcerpt(text){return cleanNovelText(String(text||'').replace(/\[หน้า\s*\d+\]/g,' ')).replace(/\s+/g,' ').slice(0,180)}
-function renderNovelContent(p){const q=String($('novelSearch')?.value||'').trim().toLowerCase();const docs=derivedChapters(p).filter(d=>!q||String(d.name||'').toLowerCase().includes(q)||String(d.text||'').toLowerCase().includes(q)).sort((a,b)=>chapterSortNumber(a)-chapterSortNumber(b)||String(a.name).localeCompare(String(b.name),'th'));if($('novelCount'))$('novelCount').textContent=`${docs.length.toLocaleString('th-TH')} บท/ตอน`;$('novelChapterList').innerHTML=docs.length?docs.map((d,i)=>`<article class="novel-chapter-card" data-novel-doc="${d.id}" tabindex="0"><div class="novel-chapter-number">${chapterSortNumber(d)<999999?chapterSortNumber(d):i+1}</div><div class="novel-chapter-main"><span class="badge">ต้นฉบับตอน</span><h3>${esc(chapterDisplayTitle(d))}</h3><p>${esc(novelExcerpt(d.text)||'ไม่มีข้อความที่อ่านได้')}</p><div class="meta">${(d.text?.length||0).toLocaleString('th-TH')} ตัวอักษร${d.pageCount?` · ${d.pageCount} หน้า`:''}</div></div><button class="view-novel-btn" data-open-novel="${d.id}">อ่าน</button></article>`).join(''):'<div class="empty">ยังไม่มีต้นฉบับตอน กรุณานำเข้าไฟล์ในหน้าเอกสารโดยเลือก “ต้นฉบับตอน”</div>';document.querySelectorAll('[data-open-novel]').forEach(b=>b.onclick=e=>{e.stopPropagation();openNovelReader(b.dataset.openNovel)});document.querySelectorAll('[data-novel-doc]').forEach(card=>{card.onclick=()=>openNovelReader(card.dataset.novelDoc);card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openNovelReader(card.dataset.novelDoc)}}})}
+function unifiedChapterEntries(p){
+  const imported=derivedChapters(p).map(d=>({...d,entryKey:`doc:${d.id}`,entrySource:'imported'}));
+  const manual=(p?.chapters||[]).map(c=>({...c,name:c.title,type:'chapter',entryKey:`manual:${c.id}`,entrySource:'manual',chapterNumber:chapterSortNumber(c)}));
+  const byIdentity=new Map();
+  [...imported,...manual].forEach(item=>{
+    const key=normalizedChapterIdentity(chapterDisplayTitle(item))||item.entryKey;
+    const old=byIdentity.get(key);
+    if(!old||String(item.updatedAt||'')>String(old.updatedAt||''))byIdentity.set(key,item);
+  });
+  return [...byIdentity.values()];
+}
+function resolveNovelEntry(p,key){
+  if(!key)return null;
+  const [kind,id]=String(key).includes(':')?String(key).split(/:(.+)/):['doc',key];
+  if(kind==='manual'){
+    const c=(p?.chapters||[]).find(x=>x.id===id);
+    return c?{...c,name:c.title,type:'chapter',entryKey:key,entrySource:'manual'}:null;
+  }
+  const d=(p?.documents||[]).find(x=>x.id===id);
+  return d?{...d,entryKey:`doc:${d.id}`,entrySource:'imported'}:null;
+}
+function renderNovelContent(p){
+  const q=String($('novelSearch')?.value||'').trim().toLowerCase();
+  const docs=unifiedChapterEntries(p).filter(d=>!q||String(d.name||d.title||'').toLowerCase().includes(q)||String(d.text||'').toLowerCase().includes(q)).sort((a,b)=>chapterSortNumber(a)-chapterSortNumber(b)||String(a.name||a.title).localeCompare(String(b.name||b.title),'th'));
+  if($('novelCount'))$('novelCount').textContent=`${docs.length.toLocaleString('th-TH')} บท/ตอน`;
+  $('novelChapterList').innerHTML=docs.length?docs.map((d,i)=>`<article class="novel-chapter-card" data-novel-doc="${esc(d.entryKey)}" tabindex="0"><div class="novel-chapter-number">${chapterSortNumber(d)<999999?chapterSortNumber(d):i+1}</div><div class="novel-chapter-main"><span class="badge">${d.entrySource==='manual'?'เขียนในแอป':'ต้นฉบับนำเข้า'}</span><h3>${esc(chapterDisplayTitle(d))}</h3><p>${esc(novelExcerpt(d.text)||'ไม่มีข้อความที่อ่านได้')}</p><div class="meta">${(d.text?.length||0).toLocaleString('th-TH')} ตัวอักษร${d.pageCount?` · ${d.pageCount} หน้า`:''}</div></div><button class="view-novel-btn" data-open-novel="${esc(d.entryKey)}">อ่าน</button></article>`).join(''):'<div class="empty">ยังไม่มีต้นฉบับตอน สามารถนำเข้าไฟล์หรือเขียนตอนใหม่ได้จากหน้าเขียนบท</div>';
+  document.querySelectorAll('[data-open-novel]').forEach(b=>b.onclick=e=>{e.stopPropagation();openNovelReader(b.dataset.openNovel)});
+  document.querySelectorAll('[data-novel-doc]').forEach(card=>{card.onclick=()=>openNovelReader(card.dataset.novelDoc);card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openNovelReader(card.dataset.novelDoc)}}})
+}
 async function renderPdfOriginal(doc, token){
   const host=$('novelReaderBody');
   host.innerHTML='<div class="pdf-native-loading">กำลังเปิดต้นฉบับ PDF…</div>';
@@ -522,7 +550,7 @@ async function renderNovelReader(doc){
     return `<p>${esc(block)}</p>`;
   }).join('')}</div></article>`;
 }
-function openNovelReader(id){currentNovelDocumentId=id;switchView('novelReader');renderNovelReader(project()?.documents.find(x=>x.id===id))}
+function openNovelReader(key){currentNovelDocumentId=key;switchView('novelReader');renderNovelReader(resolveNovelEntry(project(),key))}
 function renderCanon(p){const q=$('canonSearch').value.trim().toLowerCase(),f=$('canonFilter').value;const items=(p?.canon||[]).filter(c=>(!f||c.category===f)&&(!q||`${c.title} ${c.rule} ${c.source}`.toLowerCase().includes(q)));$('canonList').innerHTML=items.length?items.map(c=>`<article class="item-card"><span class="badge">${esc(c.category)}</span><h3>${esc(c.title)}</h3><p>${esc(c.rule)}</p><div class="meta">ลำดับความสำคัญ ${c.priority||100} · ${esc(c.source||'ไม่มีแหล่งอ้างอิง')}</div><div class="card-actions"><button data-canon-edit="${c.id}">แก้ไข</button><button data-canon-delete="${c.id}" class="danger outline">ลบ</button></div></article>`).join(''):'<div class="empty">ยังไม่มี Canon ที่ล็อก</div>';document.querySelectorAll('[data-canon-edit]').forEach(b=>b.onclick=()=>canonModal(p.canon.find(x=>x.id===b.dataset.canonEdit)));document.querySelectorAll('[data-canon-delete]').forEach(b=>b.onclick=async()=>{if(confirm('ลบ Canon นี้หรือไม่?')){p.canon=p.canon.filter(x=>x.id!==b.dataset.canonDelete);await save()}})}
 function normalizeComparableText(value){return repairThaiText(String(value||'')).toLowerCase().replace(/[\s\n\r.,;:!?"“”'‘’()\[\]{}|/\\–—_-]+/g,'')}
 function splitCharacterItems(value){
@@ -630,13 +658,32 @@ function renderCharacterDetail(c){
 }
 function openCharacterDetail(id){currentCharacterId=id;const c=project()?.characters.find(x=>x.id===id);renderCharacterDetail(c);switchView('characterDetail')}
 function renderTimeline(p){const items=[...(p?.timeline||[])].sort((a,b)=>(a.order||999999)-(b.order||999999));$('timelineList').innerHTML=items.length?items.map(t=>`<article class="timeline-item"><span class="badge">${esc(t.label||'ไม่ระบุเวลา')}${t.chapter?` · ตอน ${esc(t.chapter)}`:''}</span><h3>${esc(t.title)}</h3><p>${esc(t.details||'')}</p><div class="meta">${esc(t.source||'ไม่มีแหล่งอ้างอิง')}</div><div class="card-actions"><button data-time-edit="${t.id}">แก้ไข</button><button data-time-delete="${t.id}" class="danger outline">ลบ</button></div></article>`).join(''):'<div class="empty">ยังไม่มี Timeline</div>';document.querySelectorAll('[data-time-edit]').forEach(b=>b.onclick=()=>timelineModal(p.timeline.find(x=>x.id===b.dataset.timeEdit)));document.querySelectorAll('[data-time-delete]').forEach(b=>b.onclick=async()=>{if(confirm('ลบเหตุการณ์นี้หรือไม่?')){p.timeline=p.timeline.filter(x=>x.id!==b.dataset.timeDelete);await save()}})}
-function renderChapters(p){$('chapterList').innerHTML=p?.chapters.length?[...p.chapters].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).map(c=>`<div class="list-row"><div class="grow"><strong>${esc(c.title)}</strong><p>${textStats(c.text).chars.toLocaleString('th-TH')} ตัวอักษร · ${new Date(c.updatedAt).toLocaleString('th-TH')}</p></div><button data-chapter="${c.id}">เปิด</button></div>`).join(''):'<div class="empty">ยังไม่มีตอนที่บันทึก</div>';document.querySelectorAll('[data-chapter]').forEach(b=>b.onclick=()=>loadChapter(p.chapters.find(x=>x.id===b.dataset.chapter)))}
+function renderChapters(p){
+  const items=[
+    ...derivedChapters(p).map(d=>({...d,source:'imported'})),
+    ...(p?.chapters||[]).map(c=>({...c,name:c.title,source:'manual'}))
+  ].sort((a,b)=>chapterSortNumber(a)-chapterSortNumber(b)||String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
+  $('chapterList').innerHTML=items.length?items.map(c=>`<div class="list-row chapter-saved-row"><div class="grow"><span class="badge">${c.source==='imported'?'นำเข้า':'เขียนในแอป'}</span><strong>${esc(chapterDisplayTitle(c))}</strong><p>${textStats(c.text||'').chars.toLocaleString('th-TH')} ตัวอักษร · ${new Date(c.updatedAt||c.createdAt).toLocaleString('th-TH')}</p></div><div class="saved-chapter-actions"><button data-chapter-open="${c.id}" data-chapter-source="${c.source}">แก้ไข</button><button data-chapter-delete="${c.id}" data-chapter-source="${c.source}" class="danger outline">ลบ</button></div></div>`).join(''):'<div class="empty">ยังไม่มีตอนที่บันทึกหรือนำเข้า</div>';
+  document.querySelectorAll('[data-chapter-open]').forEach(b=>b.onclick=()=>{
+    const source=b.dataset.chapterSource;
+    const item=source==='imported'?p.documents.find(x=>x.id===b.dataset.chapterOpen):p.chapters.find(x=>x.id===b.dataset.chapterOpen);
+    if(item)loadChapter(item,source);
+  });
+  document.querySelectorAll('[data-chapter-delete]').forEach(b=>b.onclick=async()=>{
+    const source=b.dataset.chapterSource,id=b.dataset.chapterDelete;
+    const item=source==='imported'?p.documents.find(x=>x.id===id):p.chapters.find(x=>x.id===id);
+    if(!item||!confirm(`ลบ “${chapterDisplayTitle(item)}” หรือไม่?`))return;
+    if(source==='imported')p.documents=p.documents.filter(x=>x.id!==id);else p.chapters=p.chapters.filter(x=>x.id!==id);
+    if(currentChapterId===id){currentChapterId=null;currentChapterSource='manual';$('chapterTitle').value='';$('chapterText').value='';updateEditorStats()}
+    activity('chapter',`ลบตอน ${chapterDisplayTitle(item)}`);await save();toast('ลบตอนแล้ว');
+  })
+}
 function renderIssues(p){const issues=p?.issues||[];const counts={high:0,medium:0,low:0};issues.forEach(i=>counts[i.severity]=(counts[i.severity]||0)+1);$('checkSummary').innerHTML=issues.length?`<div class="summary-grid"><div class="summary-box"><strong>${issues.length}</strong><span>รายการทั้งหมด</span></div><div class="summary-box"><strong>${counts.high}</strong><span>ระดับสูง</span></div><div class="summary-box"><strong>${counts.medium}</strong><span>ควรตรวจ</span></div><div class="summary-box"><strong>${counts.low}</strong><span>ผ่านเบื้องต้น</span></div></div>`:'ยังไม่มีผลตรวจ';$('issueList').innerHTML=issues.length?issues.map(i=>`<article class="issue ${i.severity}"><span class="badge">${esc(i.type)}</span><h3>${esc(i.title)}</h3>${i.excerpt?`<blockquote>${esc(i.excerpt)}</blockquote>`:''}<p><strong>หลักฐาน:</strong> ${esc(i.evidence)}</p><div class="meta">แหล่งอ้างอิง: ${esc(i.source)}</div><p><strong>ข้อเสนอ:</strong> ${esc(i.suggestion)}</p></article>`).join(''):'<div class="empty">กด “เริ่มตรวจบทปัจจุบัน” หลังใส่ต้นฉบับ</div>'}
 function renderDNA(p){const d=p?.dna;if(!d){$('dnaStats').innerHTML=[['เอกสาร',0],['ตัวอักษร',0],['ย่อหน้า',0],['เฉลี่ย/ย่อหน้า',0]].map(([n,v])=>`<div class="stat"><strong>${v}</strong><span>${n}</span></div>`).join('');$('topWords').innerHTML='<div class="empty">ยังไม่ได้วิเคราะห์</div>';$('dnaNotes').innerHTML='<div class="empty">นำเข้าต้นฉบับหรือบันทึกตอนก่อน</div>';return}$('dnaStats').innerHTML=[['แหล่งข้อความ',d.documents],['ตัวอักษร',d.chars],['ย่อหน้า',d.paras],['เฉลี่ย/ย่อหน้า',d.avgParagraphChars]].map(([n,v])=>`<div class="stat"><strong>${Number(v).toLocaleString('th-TH')}</strong><span>${n}</span></div>`).join('');$('topWords').innerHTML=d.top.map(([w,n])=>`<span class="tag">${esc(w)} · ${n}</span>`).join('');const notes=[`ความยาวย่อหน้าเฉลี่ยประมาณ ${d.avgParagraphChars} ตัวอักษร`,`พบ ${d.sentences.toLocaleString('th-TH')} ช่วงประโยคจากข้อความทั้งหมด`,d.dialogueSignal>25?'มีสัญญาณการใช้บทสนทนาค่อนข้างมาก':'สัดส่วนบทสนทนาไม่สูงเมื่อเทียบกับคำบรรยาย',`วิเคราะห์ล่าสุด ${new Date(d.analyzedAt).toLocaleString('th-TH')}`];$('dnaNotes').innerHTML=notes.map(n=>`<div class="list-row"><div class="grow"><strong>${esc(n)}</strong></div></div>`).join('')}
 
 $('menuBtn').onclick=()=>$('.sidebar').classList.toggle('open');
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>switchView(b.dataset.go));
-$('newProjectBtn').onclick=createProjectModal;$('activeProjectSelect').onchange=async e=>{state.activeProjectId=e.target.value;currentChapterId=null;$('chapterTitle').value='';$('chapterText').value='';await save()};
+$('newProjectBtn').onclick=createProjectModal;$('activeProjectSelect').onchange=async e=>{state.activeProjectId=e.target.value;currentChapterId=null;currentChapterSource='manual';$('chapterTitle').value='';$('chapterText').value='';await save()};
 $('openCanonModal').onclick=()=>canonModal();$('openCharacterModal').onclick=()=>characterModal();$('openTimelineModal').onclick=()=>timelineModal();
 $('extractCharactersBtn').onclick=extractCharactersFromAllDocuments;
 $('backToCharacters').onclick=()=>switchView('characters');
@@ -697,8 +744,20 @@ $('clearDocumentCategory').onclick=async()=>{
 };
 
 $('chapterText').oninput=()=>{updateEditorStats();autosaveDraft()};$('chapterTitle').oninput=autosaveDraft;
-$('newChapter').onclick=()=>{currentChapterId=null;$('chapterTitle').value='';$('chapterText').value='';updateEditorStats();$('autosaveState').textContent='บทใหม่'};
-$('saveChapter').onclick=async()=>{if(!ensureProject())return;const p=project(),title=$('chapterTitle').value.trim()||'บทไม่มีชื่อ',text=$('chapterText').value;if(currentChapterId){const c=p.chapters.find(x=>x.id===currentChapterId);Object.assign(c,{title,text,updatedAt:now()})}else{const c={id:uid(),title,text,createdAt:now(),updatedAt:now()};p.chapters.push(c);currentChapterId=c.id}activity('chapter',`บันทึกตอน ${title}`);await save();$('autosaveState').textContent='บันทึกแล้ว';toast('บันทึกตอนแล้ว')};
+$('newChapter').onclick=()=>{currentChapterId=null;currentChapterSource='manual';$('chapterTitle').value='';$('chapterText').value='';updateEditorStats();$('autosaveState').textContent='บทใหม่'};
+$('saveChapter').onclick=async()=>{if(!ensureProject())return;const p=project(),title=$('chapterTitle').value.trim()||'บทไม่มีชื่อ',text=$('chapterText').value;
+  if(currentChapterId&&currentChapterSource==='imported'){
+    const d=p.documents.find(x=>x.id===currentChapterId);
+    if(!d)return toast('ไม่พบตอนนำเข้านี้');
+    Object.assign(d,{title,name:title,text,updatedAt:now(),editedInApp:true});
+  }else if(currentChapterId){
+    const c=p.chapters.find(x=>x.id===currentChapterId);
+    if(c)Object.assign(c,{title,text,updatedAt:now()});
+  }else{
+    const c={id:uid(),title,text,createdAt:now(),updatedAt:now()};p.chapters.push(c);currentChapterId=c.id;currentChapterSource='manual';
+  }
+  activity('chapter',`บันทึกตอน ${title}`);await save();$('autosaveState').textContent='บันทึกแล้ว';toast('บันทึกตอนแล้ว')
+};
 $('runChecker').onclick=async()=>{if(!ensureProject())return;const text=$('chapterText').value.trim();if(!text)return toast('กรุณาใส่เนื้อหาบทก่อน');project().issues=checkChapter(text,project());activity('check',`ตรวจความขัดแย้ง ${project().issues.length} รายการ`);await save();switchView('checker');toast('ตรวจเสร็จแล้ว')};
 $('analyzeDNA').onclick=analyzeDNA;
 function download(obj,name){const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
