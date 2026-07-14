@@ -92,7 +92,8 @@ function pdfItemsToStructuredLines(items){
     const x=Number(item.transform?.[4]||0),y=Number(item.transform?.[5]||0);
     const h=Math.max(8,Math.abs(Number(item.transform?.[3]||0))||Number(item.height)||12);
     const yTolerance=Math.max(2,h*.30);
-    const newLine=!current||item.hasEOL||(lastY!==null&&Math.abs(y-lastY)>yTolerance);
+    const xReset=!!current&&current.text.trim()&&x<(current.x-18);
+    const newLine=!current||item.hasEOL||xReset||(lastY!==null&&Math.abs(y-lastY)>yTolerance);
     if(newLine){
       if(current&&current.text.trim())lines.push(current);
       current={x,y,h,text:''};
@@ -211,8 +212,10 @@ function parseChapterHeading(line){
 function sanitizeImportedChapterTitle(title){
   let t=repairThaiText(String(title||'')).replace(/\s+/g,' ').trim();
   // A chapter title should be a compact heading, not the first paragraph accidentally joined to it.
-  const hardBreak=t.search(/(?:ป่าหิมพานต์|แสงแดด|ลมเย็น|ความมืด|เสียง|เขา|เธอ|มัน|อนันต์|คุโรชิ|เด็กชาย|ชายหนุ่ม|หญิงสาว).{12,}/);
-  if(hardBreak>3)t=t.slice(0,hardBreak).trim();
+  // PDF.js can occasionally glue the first prose line directly to the title without a space.
+  const narrativeStart=/(?:ห้อง(?:ผนึก|โถง|ลับ|เช่า|ใต้ดิน)|ป่าหิมพานต์|แสงแดด|แสงสี|ลมเย็น|ความมืด|เสียง|รอบทิศทาง|เขา(?:ลอย|เดิน|มอง|หัน|นิ่ง|กวาด|รู้สึก)|เธอ(?:เดิน|มอง|หัน)|มัน(?:กำลัง|คือ)|อนันต์(?:เดิน|มอง|หัน)|คุโรชิ(?:ลอย|มอง|หัน)|เด็กชาย(?:เดิน|มอง|หัน)|ชายหนุ่ม(?:เดิน|มอง|หัน)|หญิงสาว(?:เดิน|มอง|หัน))/;
+  const hardBreak=t.search(narrativeStart);
+  if(hardBreak>=2 && t.length-hardBreak>=18)t=t.slice(0,hardBreak).trim();
   if(t.length>72){
     const words=t.split(/\s+/);let out='';
     for(const w of words){if((out+' '+w).trim().length>72)break;out=(out+' '+w).trim()}
@@ -249,6 +252,21 @@ function splitNovelChapters(text,blocks=null){
     return {...start.h,text:body};
   }).filter(ch=>ch.text.length>20);
 }
+function repairImportedChapterTitles(p){
+  let changed=false;
+  for(const d of (p?.documents||[])){
+    if(!(d.derivedChapter||d.type==='chapter'))continue;
+    const raw=String(d.title||d.name||'').trim();
+    const parsed=parseChapterHeading(raw);
+    if(!parsed)continue;
+    if(parsed.full!==raw||d.name!==parsed.full){
+      d.title=parsed.full;d.name=parsed.full;d.chapterKind=parsed.kind;
+      d.chapterNumber=parsed.number||d.chapterNumber;d.chapterNumberText=parsed.numberText;changed=true;
+    }
+  }
+  return changed;
+}
+
 function documentTypeScores(fileName,text){
   const name=String(fileName||'').toLowerCase();
   const sample=String(text||'').slice(0,30000).toLowerCase();
@@ -1518,7 +1536,7 @@ async function handleScannerFiles(files){
   if(rawBlocks.length)status.textContent=`อ่านเสร็จแล้ว ${rawBlocks.length}/${ordered.length} ไฟล์ · ทำความสะอาดหัว–ท้ายและรวมข้อความซ้ำแล้ว`;
 }
 
-const APP_VERSION='49';
+const APP_VERSION='50';
 let updateReloading=false,lastSeenVersion=APP_VERSION;
 async function checkForAppUpdate(registration){
   try{
@@ -1539,4 +1557,4 @@ if('serviceWorker' in navigator){
 }
 
 history.scrollRestoration='manual';
-(async()=>{window.scrollTo(0,0);const loaded=await getDB();if(loaded){state={version:loaded.version||1,projects:(loaded.projects||[]).map(normalizeProject),activeProjectId:loaded.activeProjectId||loaded.projects?.[0]?.id||null}}for(const p of state.projects||[])reconcileCharacterIdentity(p);const vb=document.getElementById('appVersionBadge');if(vb)vb.textContent=`V${APP_VERSION}`;renderAll();updateEditorStats();if(loaded)await save()})();
+(async()=>{window.scrollTo(0,0);const loaded=await getDB();if(loaded){state={version:loaded.version||1,projects:(loaded.projects||[]).map(normalizeProject),activeProjectId:loaded.activeProjectId||loaded.projects?.[0]?.id||null}}for(const p of state.projects||[]){reconcileCharacterIdentity(p);repairImportedChapterTitles(p)};const vb=document.getElementById('appVersionBadge');if(vb)vb.textContent=`V${APP_VERSION}`;renderAll();updateEditorStats();if(loaded)await save()})();
